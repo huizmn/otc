@@ -211,3 +211,122 @@ for (i in 1:NumStates){
     
   }
 }
+
+
+
+
+
+filename resp temp;
+%let myCensusKey = %str(4df39257f305a4e3b810f024e718218e375d9075);
+
+%macro CensusAPIdl(Var, outTable);
+
+/*puts the results from a responsefile into a table and uses the first row from the response to create variable names */
+proc http url="https://api.census.gov/data/2018/acs/acs5?get=&Var&for=tract:*&in=state:36&key=&myCensusKey"
+  method= "GET"
+  out=resp;
+run;
+
+libname temp JSON fileref=resp;
+
+data _null_;
+  set temp.root (obs=1);
+  array elemCols{*} element:;
+  length rename $4000;
+  do i=1 to dim(elemCols);
+    rename=catx(' ',rename, catx('=','element'||compress(put(i,3.)),elemCols{i}));
+  end;
+  call symputx('rename',rename);
+run;
+
+data &outTable;
+  set temp.root (firstobs=2);
+  rename &rename;
+
+run;
+
+libname temp clear;
+%mend;
+
+%let curr_var=B21001_002E;
+%CensusAPIdl(&curr_var,&curr_var);
+
+%let curr_var=B12001_001E;
+%CensusAPIdl(&curr_var,&curr_var);
+
+data acsvarlst;
+input var $15.;
+cards;
+B12001_001E
+B12001_002E
+B12001_003E
+B12001_004E
+B12001_009E
+B12001_010E
+B12001_011E
+B12001_012E
+B12001_013E
+B12001_018E
+B12001_019E
+C17002_001E
+C17002_002E
+C17002_003E
+C17002_004E
+C17002_005E
+C17002_006E
+C17002_007E
+C17002_008E
+B06010_001E
+B06010_002E
+B06010_003E
+B06010_004E
+B06010_005E
+B06010_006E
+B06010_007E
+B06010_008E
+B06010_009E
+B06010_010E
+B06010_011E
+B19058_001E
+B19058_002E
+B19058_003E
+B21001_002E
+B21001_002E
+B21001_003E
+B23006_001E
+B23006_002E
+B23006_009E
+B23006_023E
+;
+run;
+
+proc sql noprint;
+select distinct var into: acsvarlst separated by " " from  acsvarlst(obs=3);
+quit;
+%put &acsvarlst;
+
+data _all(drop=ordinal_root B21001_002E); set B21001_002E;run;
+proc sort data=_all; by state county tract;run;
+
+%macro acsVarPullRun(list);
+%local curr_var j ;
+%let j = 1 ;
+%do %while(%qscan(&list,&j,%str( )) ne %str());
+    %let curr_var = %scan(&list,&j) ;
+    %put curr_var=&var.;
+
+	%CensusAPIdl(&curr_var,&curr_var);
+
+	proc sort data=&curr_var; by state county tract;run;
+
+	data _all;
+	merge _all &curr_var(drop=ordinal_root);
+	by state county tract;
+	run;
+
+    %put A=&J;
+    %let j = %eval(&j+1) ;
+    %put B=&J;
+%end;
+%mend;
+%acsVarPullRun(&acsvarlst);
