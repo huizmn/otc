@@ -1,3 +1,8 @@
+I am a data scientist from ARA and working on data science projects for ECS prior authorization, MCR, ICM clinical reviews   . My access was deactivated and I write to have it reactivated. Thanks.
+
+
+
+
 2nd use case is  Spondylolisthesis, is also known as listhsis. listhsis is a spinal disorder in which a vertebrae slips forward onto the vertebrae below it. If the vertebra slips too far, it may press on nerves and cause severe back pain or nerve crowding that produces leg pain or numbness. In our developed solution, we first use segmentation model to detect the boundary contour of the vertebras L5 and S1, and then identify the posterior edge of vertebras L5 and s1 and superior diameter of s5. then we measure and calculate the rialto of displacement  to come up an estimate of the grading of listhsis. 
 For this solution, the images used are CT scans, and the algorithms used include one specific type of deep learning UNET model called ImageNet , and some refined contouring algorithm , and the scaled measurement algorithm as well. 
 
