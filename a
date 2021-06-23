@@ -1,1 +1,379 @@
-a
+libname zip20 "C:\Users\zhenghu\Documents\zip\sasdata2020";
+libname oea20 "C:\Users\zhenghu\Documents\oea\sasdata2020";
+
+libname oea "C:\Users\zhenghu\Documents\oea";
+data oea20.dmeruralzip;set oea.dmeruralzip;run;
+
+/*
+data oea20.rega_yr3; 
+set oea20.asof2020Q2_plusincremental36m;
+zipcode=substr(zip,1,5);
+if length(zipcode)=4 then zipcode=cats("0",zipcode);
+where incremental_2017Q2to2020Q2>0 ;
+run;
+data oea20.rega_yr1; 
+set oea20.asof2020Q2_PLUSINCREMENTAL12M;
+zipcode=substr(zip,1,5);
+if length(zipcode)=4 then zipcode=cats("0",zipcode);
+where incremental_2019Q2to2020Q2>0;
+run;
+data regcf; ;
+set oea20.regcf20(rename=(ZIPCODE=zip));
+zipcode=substr(zip,1,5);
+if length(zipcode)=4 then zipcode=cats("0",zipcode);
+Filing_Date=cu_date;
+format Filing_Date date9.;
+FINAL_RAISED=raised;
+run;
+
+*/
+
+
+/********************************************************************/
+/*reg a diaster*/
+/********************************************************************/
+/*
+dummy 1: not found
+dummy 0: found
+*/
+
+proc sql;
+create table regazipfound_yr1 as
+select *, 0 as dummy from oea20.rega_yr1 where zipcode in (select distinct zip from oea20.dmeruralzip);
+create table regazipnotfound_yr1 as
+select *, 1 as dummy from oea20.rega_yr1 where zipcode not in (select distinct zip from oea20.dmeruralzip);
+quit;
+
+data oea20.rega_rural_yr1;
+set regazipfound_yr1 regazipnotfound_yr1;
+run;
+
+proc sql;
+create table regazipfound_yr3 as
+select *, 0 as dummy from oea20.rega_yr3 where zipcode in (select distinct zip from oea20.dmeruralzip);
+create table regazipnotfound_yr3 as
+select *, 1 as dummy from oea20.rega_yr3 where zipcode not in (select distinct zip from oea20.dmeruralzip);
+quit;
+
+data oea20.rega_rural_yr3;
+set regazipfound_yr3 regazipnotfound_yr3;
+run;
+
+/********************************************************************/
+/*with foreign zip rega */
+/********************************************************************/
+proc means data=oea20.rega_rural_yr3 sum mean median;
+class dummy;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0;
+run;
+proc means data=oea20.rega_rural_yr3 n sum mean median;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 ;
+run;
+
+proc means data=oea20.rega_rural_yr1 sum mean median;
+class dummy;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0;
+run;
+proc means data=oea20.rega_rural_yr1 n sum mean median;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 ;
+run;
+
+/********************************************************************/
+/*non foreign zip rega */
+/********************************************************************/
+proc means data=oea20.rega_rural_yr3 sum mean median;
+class dummy;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 and zip not in:("V");;
+run;
+proc means data=oea20.rega_rural_yr3 n sum mean median;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 and zip not in:("V");;
+run;
+
+proc means data=oea20.rega_rural_yr1 sum mean median;
+class dummy;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 and zip not in:("V");;
+run;
+proc means data=oea20.rega_rural_yr1 n sum mean median;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 and zip not in:("V");;
+run;
+
+/********************************************************************/
+/*reg cf */
+/********************************************************************/
+/*
+dummy 1: not found
+dummy 0: found
+*/
+
+/*dummy variable-- 0: matching are found, 1: matching are not found*/
+proc sql;
+create table zipfound as
+select *, 0 as dummy from regcf where Filing_Date between '01Jul2019'd and '30Jun2020'd and
+	zipcode in (select distinct zip from oea20.dmeruralzip);
+create table zipnotfound as
+select *, 1 as dummy from regcf where Filing_Date between '01Jul2019'd and '30Jun2020'd  and
+	zipcode not in (select distinct zip from oea20.dmeruralzip);
+quit;
+
+data oea20.regcf_rural_yr1;;
+set zipfound zipnotfound;
+run;
+
+proc sql;
+create table zipfound_yr3 as
+select *, 0 as dummy from regcf where Filing_Date between '01Jul2017'd and '30Jun2020'd and
+	zipcode in (select distinct zip from oea20.dmeruralzip);
+create table zipnotfound_yr3 as
+select *, 1 as dummy from regcf where Filing_Date between '01Jul2017'd and '30Jun2020'd  and
+	zipcode not in (select distinct zip from oea20.dmeruralzip);
+quit;
+
+data oea20.regcf_rural_yr3;;
+set zipfound_yr3 zipnotfound_yr3;
+run;
+
+/********************************************************************/
+/*regcf */
+/********************************************************************/
+proc means data=oea20.regcf_rural_yr3 sum mean median;
+class dummy;
+var final_raised;
+run;
+proc means data=oea20.regcf_rural_yr3 n sum mean median;
+var final_raised;
+run;
+
+proc means data=oea20.regcf_rural_yr1 sum mean median;
+class dummy;
+var final_raised;
+run;
+proc means data=oea20.regcf_rural_yr1 n sum mean median;
+var final_raised;
+run;
+
+
+
+/********************************************************************/
+/********************************************************************/
+/********************************************************************/
+/********************************************************************/
+
+
+/********************************************************************/
+/*with foreign zip rega */
+/********************************************************************/
+proc means data=oea20.rega_rural_yr3 sum mean median;
+class dummy;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 ;
+run;
+proc means data=oea20.rega_rural_yr3 n sum mean median;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 ;
+run;
+
+proc means data=oea20.rega_rural_yr1 sum mean median;
+class dummy;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0;
+run;
+proc means data=oea20.rega_rural_yr1 n sum mean median;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 ;
+run;
+
+/********************************************************************/
+/*non foreign zip rega */
+/********************************************************************/
+proc means data=oea20.rega_rural_yr3 sum mean median;
+class dummy;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 and zip not in:("V");;
+run;
+proc means data=oea20.rega_rural_yr3 n sum mean median;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 and zip not in:("V");;
+run;
+
+proc means data=oea20.rega_rural_yr1 sum mean median;
+class dummy;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 and zip not in:("V");;
+run;
+proc means data=oea20.rega_rural_yr1 n sum mean median;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 and zip not in:("V");;
+run;
+
+/********************************************************************/
+/*regcf */
+/********************************************************************/
+proc means data=oea20.regcf_rural_yr3 sum mean median;
+class dummy;
+var final_raised;
+run;
+proc means data=oea20.regcf_rural_yr3 n sum mean median;
+var final_raised;
+run;
+
+proc means data=oea20.regcf_rural_yr1 sum mean median;
+class dummy;
+var final_raised;
+run;
+proc means data=oea20.regcf_rural_yr1 n sum mean median;
+var final_raised;
+run;
+
+
+/****************************************************************************************************************************************/
+/****************************************************************************************************************************************/
+/****************************************************************************************************************************************/
+/****************************************************************************************************************************************/
+/*with foreign zip rega yr3*/
+proc means data=oea20.rega_rural_yr3 noprint nway;
+class dummy;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 ;
+output out=_rega_rural3(drop=_:) 
+	sum(incremental_2017Q2to2020Q2)=sum mean(incremental_2017Q2to2020Q2)=mean median(incremental_2017Q2to2020Q2)=median n(incremental_2017Q2to2020Q2)=count;
+run;
+proc means data=oea20.rega_rural_yr3 noprint nway;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0 ;
+output out=_rega_rurala3(drop=_:) 
+	sum(incremental_2017Q2to2020Q2)=sum mean(incremental_2017Q2to2020Q2)=mean median(incremental_2017Q2to2020Q2)=median n(incremental_2017Q2to2020Q2)=count;
+run;
+data oea20.rega_rural_summary_yr3pop;
+set _rega_rural3 _rega_rurala3;
+if missing(dummy) then dummy=2;
+run;
+/*with foreign zip rega yr1*/
+proc means data=oea20.rega_rural_yr1 noprint nway;
+class dummy;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 ;
+output out=_rega_rural(drop=_:) 
+	sum(incremental_2019Q2to2020Q2)=sum mean(incremental_2019Q2to2020Q2)=mean median(incremental_2019Q2to2020Q2)=median n(incremental_2019Q2to2020Q2)=count;
+run;
+proc means data=oea20.rega_rural_yr1 noprint nway;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 ;
+output out=_rega_rurala(drop=_:) 
+	sum(incremental_2019Q2to2020Q2)=sum mean(incremental_2019Q2to2020Q2)=mean median(incremental_2019Q2to2020Q2)=median n(incremental_2019Q2to2020Q2)=count;
+run;
+data oea20.rega_rural_summary_yr1pop;
+set _rega_rural _rega_rurala;
+if missing(dummy) then dummy=2;
+run;
+/*non foreign zip rega yr3*/
+proc means data=oea20.rega_rural_yr3 noprint nway;
+class dummy;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0  and zip not in:("V");
+output out=_rega_rural3(drop=_:) 
+	sum(incremental_2017Q2to2020Q2)=sum mean(incremental_2017Q2to2020Q2)=mean median(incremental_2017Q2to2020Q2)=median n(incremental_2017Q2to2020Q2)=count;
+run;
+proc means data=oea20.rega_rural_yr3 noprint nway;
+var incremental_2017Q2to2020Q2;
+where incremental_2017Q2to2020Q2>0  and zip not in:("V");
+output out=_rega_rurala3(drop=_:) 
+	sum(incremental_2017Q2to2020Q2)=sum mean(incremental_2017Q2to2020Q2)=mean median(incremental_2017Q2to2020Q2)=median n(incremental_2017Q2to2020Q2)=count;
+run;
+data oea20.rega_rural_summary_yr3_nf_pop;
+set _rega_rural3 _rega_rurala3;
+if missing(dummy) then dummy=2;
+run;
+
+/*non foreign zip rega yr1*/
+proc means data=oea20.rega_rural_yr1 noprint nway;
+class dummy;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 and zip not in:("V");
+output out=_rega_rural(drop=_:) 
+	sum(incremental_2019Q2to2020Q2)=sum mean(incremental_2019Q2to2020Q2)=mean median(incremental_2019Q2to2020Q2)=median n(incremental_2019Q2to2020Q2)=count;
+run;
+proc means data=oea20.rega_rural_yr1 noprint nway;
+var incremental_2019Q2to2020Q2;
+where incremental_2019Q2to2020Q2>0 and zip not in:("V");
+output out=_rega_rurala(drop=_:) 
+	sum(incremental_2019Q2to2020Q2)=sum mean(incremental_2019Q2to2020Q2)=mean median(incremental_2019Q2to2020Q2)=median n(incremental_2019Q2to2020Q2)=count;
+run;
+data oea20.rega_rural_summary_yr1_nf_pop;
+set _rega_rural _rega_rurala;
+if missing(dummy) then dummy=2;
+run;
+
+
+proc means data=oea20.regcf_rural_yr3 noprint nway;
+class dummy;
+var final_raised;
+output out=_regcf_rural3(drop=_:)
+sum(final_raised)=sum mean(final_raised)=mean median(final_raised)=median n(final_raised)=count;
+run;
+proc means data=oea20.regcf_rural_yr3 noprint nway;
+var final_raised;
+output out=_regcf_rurala3(drop=_:) 
+sum(final_raised)=sum mean(final_raised)=mean median(final_raised)=median n(final_raised)=count;
+run;
+data oea20.regcf_rural_summary_yr3_pop;
+set _regcf_rural3 _regcf_rurala3;
+if missing(dummy) then dummy=2;
+run;
+
+proc means data=oea20.regcf_rural_yr1 noprint nway;
+class dummy;
+var final_raised;
+output out=_regcf_rural(drop=_:) 
+sum(final_raised)=sum mean(final_raised)=mean median(final_raised)=median n(final_raised)=count;
+run;
+proc means data=oea20.regcf_rural_yr1 noprint nway;
+var final_raised;
+output out=_regcf_rurala(drop=_:) 
+sum(final_raised)=sum mean(final_raised)=mean median(final_raised)=median n(final_raised)=count;
+run;
+data oea20.regcf_rural_summary_yr1_pop;
+set _regcf_rural _regcf_rurala;
+if missing(dummy) then dummy=2;
+run;
+
+proc datasets library = work noprint;delete _reg:;run;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data foo; set oea20.rega_rural_yr3;where incremental_2017Q2to2020Q2>0;run;
+proc sql;
+select count(*) as cnt, count(distinct cik) as cik from oea20.rega_rural_yr3 where incremental_2017Q2to2020Q2>0;
+quit;
+
+
+proc sql;
+create table rega_yr1_final as select a.*, 1-a.dummy as rural, 1-b.dummy as fema from oea20.rega_rural_yr1 a left join oea20.rega_fema_housing_yr1 b on a.cik=b.cik where a.incremental_2019Q2to2020Q2>0 and b.incremental_2019Q2to2020Q2>0;
+create table rega_yr3_final as select a.*, 1-a.dummy as rural, 1-b.dummy as fema from oea20.rega_rural_yr3 a left join oea20.rega_fema_housing_yr3 b on a.cik=b.cik and a.tier=b.tier where a.incremental_2017Q2to2020Q2>0 and b.incremental_2017Q2to2020Q2>0;
+create table regcf_yr1_final as select a.*, 1-a.dummy as rural, 1-b.dummy as fema from oea20.regcf_rural_yr1 a left join oea20.regcf_fema_housing_yr1 b on a.filercik1=b.filercik1 and a.Filing_Date=b.Filing_Date and a.zip=b.zip;
+create table regcf_yr3_final as select a.*, 1-a.dummy as rural, 1-b.dummy as fema from oea20.regcf_rural_yr3 a left join oea20.regcf_fema_housing_yr3 b on a.filercik1=b.filercik1 and a.Filing_Date=b.Filing_Date and a.zip=b.zip and a.final_raised=b.final_raised;
+quit;
+
+proc freq data=rega_yr1_final; table rural fema/missing list;run;
+proc freq data=rega_yr3_final; table rural fema/missing list;run;
+proc freq data=regcf_yr1_final; table rural fema/missing list;run;
+proc freq data=regcf_yr3_final; table rural fema/missing list;run;
+
