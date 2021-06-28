@@ -1,0 +1,429 @@
++
+cd "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\"
+
+*******************************************************************
+*******************************************************************
+**************FILE CONSTRUCTION HERE*******************************
+*******************************************************************
+*******************************************************************
+*take files from 2020H1 Semi-Annual Update in 6.\Memos\RegCF
+
+cd "J:\Oea\OCF\6. Memos\RegCF\20200630\
+
+*******************************************************************
+///INITIATED FORM C FILINGS in 12m ending 2020H1
+*******************************************************************
+use formCs_asof20200630, clear
+keep if submi=="C"
+ren file_number filenumber
+replace filenumber=rtrim(ltrim(filenumber))
+*file dates in 12m ending 2020H1
+keep if filing_date<=mdy(6,30,2020) & filing_date>=mdy(7,1,2019)
+*exclude withdrawals
+*all UFP offerings
+drop if commissioncik ==1668380
+*all filings prior to latest Form C-W for that CIK and filenumber
+joinby cik filenumber using withdrawals, unmatched(master)
+drop if filing_date<=withd_date & withd_date<.
+drop _m withd_date
+*consolidate multiple Form C filings in cik-fileno - n.a.
+sort cik filenumber filing_date accession
+by cik filenumber: keep if _n==_N
+ren offeringamount target
+ren maximum maximum
+*reset max to target if does not accept oversubscriptions
+replace maximum=target if oversubscriptionacc=="N"
+
+ren state state
+ren zip zip
+tab zip if real(zip)==.
+replace zip=substr(zip,1,strpos(zip,"-")-1) if strpos(zip,"-")>0
+destring cik, force replace
+destring zip, force replace
+ren nameofissuer company
+keep cik company filing_date accession maximum target state zip
+save "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\FormC_initiated12m_2020Q2", replace
+
+
+*******************************************************************
+///INITIATED FORM C FILINGS in 36m ending 2020H1
+*******************************************************************
+use formCs_asof20200630, clear
+keep if submi=="C"
+ren file_number filenumber
+replace filenumber=rtrim(ltrim(filenumber))
+*file dates in 36m ending 2020H1
+keep if filing_date<=mdy(6,30,2020) & filing_date>=mdy(7,1,2017)
+*exclude withdrawals
+*all UFP offerings
+drop if commissioncik ==1668380
+*all filings prior to latest Form C-W for that CIK and filenumber
+joinby cik filenumber using withdrawals, unmatched(master)
+drop if filing_date<=withd_date & withd_date<.
+drop _m withd_date
+*consolidate multiple Form C filings in cik-fileno - n.a.
+sort cik filenumber filing_date accession
+by cik filenumber: keep if _n==_N
+ren offeringamount target
+ren maximum maximum
+*reset max to target if does not accept oversubscriptions
+replace maximum=target if oversubscriptionacc=="N"
+
+ren state state
+ren zip zip
+list zip street* state if real(zip)==.
+replace zip=substr(zip,1,strpos(zip,"-")-1) if strpos(zip,"-")>0
+replace zip="60126" if street1=="121 S Kenmore Ave" & zip=="Elmhurst" & state=="IL"
+destring cik, force replace
+destring zip, force replace
+ren nameofissuer company
+keep cik company filing_date accession maximum target state zip
+save "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\FormC_initiated36m_2020Q2", replace
+
+
+*geoidentifier 
+use formCs_asof20200630, clear
+keep if sub=="C-U"
+keep cik accession zip state
+ren zip zip
+ren state state
+destring cik, force replace
+tab zip if real(zip)==.
+replace zip=substr(zip,1,strpos(zip,"-")-1) if strpos(zip,"-")>0
+destring zip, force replace
+save "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\stub", replace
+
+*******************************************************************
+///FORM C-U REPORTS OF PROCEEDS in 12m ending 2020H1
+*******************************************************************
+use formCUs__asof20200630, clear
+*file dates in 12m ending 2020H1
+keep if cu_date<=mdy(6,30,2020) & cu_date>=mdy(7,1,2019)
+*merge in geo identifiers
+destring cik, force replace
+joinby cik accession using "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\stub", unmatched(master)
+tab _m
+drop _m
+save "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\FormCU_12m_2020Q2", replace
+*******************************************************************
+///FORM C-U REPORTS OF PROCEEDS in 36m ending 2020H1
+*******************************************************************
+use formCUs__asof20200630, clear
+*file dates in 12m ending 2020H1
+keep if cu_date<=mdy(6,30,2020) & cu_date>=mdy(7,1,2017)
+*merge in geo identifiers
+destring cik, force replace
+joinby cik accession using "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\stub", unmatched(master)
+tab _m
+drop _m
+save "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\FormCU_36m_2020Q2", replace
+
+
+*******************************************************************
+*******************************************************************
+**************ANALYSIS FOR TABLES/FIGURES BEGINS HERE**************
+*******************************************************************
+*******************************************************************
+cd "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\"
+*******************************************************************
+***p.11 of the report "What regulatory pathways are companies using to raise capital?"
+///# of initiated Form C offerings ex. amendments filed in last 12m
+use FormC_initiated12m_2020Q2, clear
+egen new12m_num=count(cik)
+collapse new12m_num
+gen d=1
+save tmp, replace
+///number of offerings with proceeds reports; aggregate, mean, and median proceeds reported on Form C-U in last 12m
+use FormCU_12m_2020Q2, clear
+*convert to mln
+replace raised=raised/1000000
+keep if raised>0 & raised<.
+foreach k in count sum mean median {
+egen raised12m_`k'=`k'(raised)
+}
+collapse raised12m*
+gen d=1
+joinby d using tmp
+order new12m_num raised*
+label var new12m_num "# of new initiated Form C offerings in 12m ending 6/2020"
+*includes new reports of proceeds and incremental reports of proceeds in ongoing offerings
+label var raised12m_count "# of offerings with Form C-U reports in 12m ending 6/2020 ($ mil.)"
+label var raised12m_sum "Aggregate Form C-U proceeds reported in 12m ending 6/2020 ($ mil.)"
+label var raised12m_mean "Mean Form C-U proceeds reported in 12m ending 6/2020 ($ mil.)"
+label var raised12m_median "Median Form C-U proceeds reported in 12m ending 6/2020 ($ mil.)"
+export excel OASB_2020Report_RegCF.xlsx, sheet(aggregates, replace) firstrow(varl)
+erase tmp.dta
+
+*******************************************************************
+***page 14. Distribution by issuer location
+*******************************************************************
+***Number of initiated Form C offerings, ex. amendments, last 12m
+use FormC_initiated12m_2020Q2, clear
+tab state if real(substr(state,2,1))<.
+replace state="Non-US" if real(substr(state,2,1))<. | real(substr(state,1,1))<. 
+collapse(count) cik, by(state)
+ren cik new12m_num 
+label var new12m_num "# of new initiated Form C offerings in 12m ending 6/2020"
+ren state state
+save tmp_1, replace
+
+***capital reported raised; last 12m
+use FormCU_12m_2020Q2, clear
+*convert to mln
+replace raised=raised/1000000
+keep if raised>0 & raised<.
+tab state if real(substr(state,2,1))<.
+replace state="Non-US" if real(substr(state,2,1))<. | real(substr(state,1,1))<. 
+foreach k in count sum {
+egen raised12m_`k'=`k'(raised), by(state)
+}
+collapse raised12m*, by(state)
+label var raised12m_count "# of offerings with Form C-U reports in 12m ending 6/2020"
+label var raised12m_sum "Aggregate Form C-U proceeds reported in 12m ending 6/2020 ($ mil.)"
+save tmp_2, replace
+
+use j:\CFLookback\geo\match2018_, clear
+joinby state using tmp_1, unmatched(both)
+tab _m
+drop _m
+replace new12m_num=0 if new12m_num==.
+joinby state using tmp_2, unmatched(both)
+tab _m
+drop _m
+label var state "State"
+drop _ID
+replace raised12m_count=0 if raised12m_count==.
+replace raised12m_sum=0 if raised12m_sum==.
+sort state
+export excel using OASB_2020Report_RegCF.xlsx, sheet(state, replace) firstrow(varl)
+
+erase tmp_1.dta
+erase tmp_2.dta
+
+*******************************************************************
+***page 35-36 input for rural and disaster analysis -- 
+*number of initiated Form C offerings, ex. amendments, last 36m ending 2020Q2, by zip code
+*******************************************************************
+use FormC_initiated36m_2020Q2, clear
+gen d=1
+drop if zip==.
+collapse(count) d, by(zip)
+ren d new36m_num 
+ren zip zip
+label var new36m_num "# of new initiated Form C offerings in 36m ending 6/2020"
+save tmp_1, replace
+
+***Number of unique issuers in initiated Form C offerings, ex. amendments, last 36m, by zip code
+use FormC_initiated36m_2020Q2, clear
+sort cik
+by cik: keep if _n==1
+gen d=1
+drop if zip==.
+collapse(count) d, by(zip)
+ren d issuers36m_num 
+ren zip zip
+label var issuers36m_num "# of unique issuers in new initiated Form C offerings in 36m ending 6/2020"
+save tmp_2, replace
+
+***capital reported raised; last 36m
+use FormCU_36m_2020Q2, clear
+*convert to mln
+replace raised=raised/1000000
+keep if raised>0 & raised<.
+drop if zip==.
+foreach k in count sum {
+egen raised36m_`k'=`k'(raised), by(zip)
+}
+egen r=rank(raised), by(cik) unique
+replace r=. if r!=1
+egen raised36m_issuersnum=sum(r), by(zip)
+collapse raised36m*, by(zip)
+ren zip zip
+label var raised36m_issuersnum "# of unique issuers with Form C-U reports in 36m ending 6/2020"
+label var raised36m_count "# of offerings with Form C-U reports in 36m ending 6/2020"
+label var raised36m_sum "Aggregate Form C-U proceeds reported in 36m ending 6/2020 ($ mil.)"
+save tmp_3, replace
+
+use tmp_1, clear
+joinby zip using tmp_2, unmatched(both)
+tab _m
+drop _m
+joinby zip using tmp_3, unmatched(both)
+tab _m
+drop _m
+replace issuers36m_num=0 if issuers36m_num==.
+replace new36m_num=0 if new36m_num==.
+replace raised36m_sum=0 if raised36m_sum==.
+replace raised36m_issuersnum=0 if raised36m_issuersnum==.
+replace raised36m_count=0 if raised36m_count==.
+export excel using OASB_2020Report_RegCF.xlsx, sheet(forrural, replace) firstrow(varl)
+
+erase tmp_1.dta
+erase tmp_2.dta
+erase tmp_3.dta
+
+*******************************************************************
+***covid_monthly
+*[not excluding withdrawals, differently from prior tables]
+*[withdrawals have a lag so excluding withdrawals would be biased in favor of 2020H1 numbers
+*******************************************************************
+
+cd "J:\Oea\OCF\6. Memos\RegCF\20200630\
+
+use formCs_asof20200630, clear
+ren file_number filenumber
+replace filenumber=rtrim(ltrim(filenumber))
+*file dates in 2019H1 and 2020H1
+keep if filing_date<=mdy(6,30,2020) & filing_date>=mdy(1,1,2020) | filing_date<=mdy(6,30,2019) & filing_date>=mdy(1,1,2019)
+*NOT exclude withdrawals
+*number of initial Form Cs and amendments
+gen initial_filed=1 if subm=="C"
+gen amend_filed=1 if subm=="C/A"
+*target amount in initial offerings, $mln
+ren offeringamount target
+gen initial_target=target/1000000 if subm=="C"
+*maximum amount in initial offerings, $mln
+///reset max to target if does not accept oversubscriptions
+ren maximum maximum
+replace maximum=target if oversubscriptionacc=="N"
+gen initial_max=maximum/1000000 if subm=="C"
+*consolidate multiple Form C of the same type in the same date-cik-fileno - n.a.
+sort cik filenumber initial_filed filing_date accession
+by cik filenumber initial_filed filing_date: keep if _n==_N
+gen yearmo=year(filing_date)*100+month(filing_date)
+///statistics
+egen new_count=sum(initial_filed), by(yearmo)
+egen amend_count=sum(amend_filed), by(yearmo)
+egen new_target_sum=sum(initial_target), by(yearmo)
+egen new_target_mean=mean(initial_target), by(yearmo)
+egen new_target_median=median(initial_target), by(yearmo)
+egen new_max_sum=sum(initial_max), by(yearmo)
+egen new_max_mean=mean(initial_max), by(yearmo)
+egen new_max_median=median(initial_max), by(yearmo)
+collapse new_count amend_count new_target_sum new_target_mean new_target_median new_max_sum new_max_mean new_max_median, by(yearmo)
+label var new_count "# of new Form C filings"
+label var amend_count "# of amended Form C filings"
+label var new_target_sum "Aggregate target amount sought in new Form C filings ($ mil.)"
+label var new_target_mean "Mean target amount sought in new Form C filings ($ mil.)"
+label var new_target_median "Median target amount sought in new Form C filings ($ mil.)"
+label var new_max_sum "Aggregate maximum amount sought in new Form C filings ($ mil.)"
+label var new_max_mean "Mean maximum amount sought in new Form C filings ($ mil.)"
+label var new_max_median "Median maximum amount sought in new Form C filings ($ mil.)"
+save tmp, replace
+
+export excel using "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\OASB_2020Report_RegCF.xlsx", sheet(covid, replace) firstrow(varl)
+
+erase tmp.dta
+
++adding COVID trends through 2020-09-30
+///save files off sec.gov/dera/data for 2020Q3 Reg CF filings
+cd "j:\Oea\OCF\6. Memos\RegCF\"
+*changed taxonomy from 2020Q1 onwards
+global files2 2020q3
+foreach k in $files2 {
+unzipfile `k'_cf.zip, replace
+erase `k'_cf/cf_metadata.json
+erase `k'_cf/cf_readme.html
+erase `k'_cf/FORM_C_ISSUER_JURISDICTIONS.tsv
+erase `k'_cf/FORM_C_ISSUER_SIGNATURE.tsv
+erase `k'_cf/FORM_C_SIGNATURE.tsv
+import delimited using `k'_cf/FORM_C_DISCLOSURE.tsv, clear
+save `k'_cf/disc, replace
+import delimited using `k'_cf/FORM_C_ISSUER_INFORMATION.tsv, clear
+save `k'_cf/issr, replace
+import delimited using `k'_cf/FORM_C_SUBMISSION.tsv, clear
+save `k'_cf/subm, replace
+erase `k'_cf/FORM_C_SUBMISSION.tsv
+erase `k'_cf/FORM_C_ISSUER_INFORMATION.tsv
+erase `k'_cf/FORM_C_DISCLOSURE.tsv
+
+use `k'_cf/subm, clear
+joinby accession_number using `k'_cf/subm, unmatched(master)
+tab _m
+drop _m
+joinby accession_number using `k'_cf/issr, unmatched(master)
+tab _m
+drop _m
+joinby accession_number using `k'_cf/disc, unmatched(master)
+tab _m
+drop _m
+save stub_`k', replace
+erase `k'_cf/issr.dta
+erase `k'_cf/subm.dta
+erase `k'_cf/disc.dta
+*rmdir `k'_cf - clean up manually
+
+use stub_`k', clear
+tostring progressupdate, force replace
+tostring legalstatusotherdesc, force replace
+tostring period, force replace
+recast strL progressupdate 
+recast strL legalstatusotherdesc 
+tostring zipcode, force replace
+save, replace
+}
+
+clear
+foreach k in $files2 {
+append using stub_`k'
+}
+*fix filing date to Stata format
+gen year=int(filing_date/10000)
+gen month=int(filing_date/100)-year*100
+gen day=filing_date-int(filing_date/100)*100
+gen filing_date_=mdy(month, day, year)
+drop month day year filing_date
+ren filing_date filing_date
+save formCs_2020q3, replace
+
+clear
+use 20200630\formCs_asof20200630, clear 
+append using formCs_2020q3
+save formCs_asof20200930, replace
+
+///repeat stats
+cd "J:\Oea\OCF\6. Memos\RegCF\
+use formCs_asof20200930, clear
+ren file_number filenumber
+replace filenumber=rtrim(ltrim(filenumber))
+*file dates in 2019Q1-Q4 and 2020Q1-Q3
+keep if filing_date<=mdy(9,30,2020) & filing_date>=mdy(1,1,2020) | filing_date<=mdy(12,31,2019) & filing_date>=mdy(1,1,2019)
+*NOT exclude withdrawals
+*number of initial Form Cs and amendments
+gen initial_filed=1 if subm=="C"
+gen amend_filed=1 if subm=="C/A"
+*target amount in initial offerings, $mln
+ren offeringamount target
+gen initial_target=target/1000000 if subm=="C"
+*maximum amount in initial offerings, $mln
+///reset max to target if does not accept oversubscriptions
+ren maximum maximum
+replace maximum=target if oversubscriptionacc=="N"
+gen initial_max=maximum/1000000 if subm=="C"
+*consolidate multiple Form C of the same type in the same date-cik-fileno - n.a.
+sort cik filenumber initial_filed filing_date accession
+by cik filenumber initial_filed filing_date: keep if _n==_N
+gen yearmo=year(filing_date)*100+month(filing_date)
+///statistics
+egen new_count=sum(initial_filed), by(yearmo)
+egen amend_count=sum(amend_filed), by(yearmo)
+egen new_target_sum=sum(initial_target), by(yearmo)
+egen new_target_mean=mean(initial_target), by(yearmo)
+egen new_target_median=median(initial_target), by(yearmo)
+egen new_max_sum=sum(initial_max), by(yearmo)
+egen new_max_mean=mean(initial_max), by(yearmo)
+egen new_max_median=median(initial_max), by(yearmo)
+collapse new_count amend_count new_target_sum new_target_mean new_target_median new_max_sum new_max_mean new_max_median, by(yearmo)
+label var new_count "# of new Form C filings"
+label var amend_count "# of amended Form C filings"
+label var new_target_sum "Aggregate target amount sought in new Form C filings ($ mil.)"
+label var new_target_mean "Mean target amount sought in new Form C filings ($ mil.)"
+label var new_target_median "Median target amount sought in new Form C filings ($ mil.)"
+label var new_max_sum "Aggregate maximum amount sought in new Form C filings ($ mil.)"
+label var new_max_mean "Mean maximum amount sought in new Form C filings ($ mil.)"
+label var new_max_median "Median maximum amount sought in new Form C filings ($ mil.)"
+save tmp, replace
+
+export excel using "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegCF\OASB_2020Report_RegCF_additional.xlsx", sheet(covidtoQ4, replace) firstrow(varl)
+
+erase tmp.dta
