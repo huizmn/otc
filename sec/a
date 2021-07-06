@@ -1,1 +1,1060 @@
-a
++
+cd "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegA\"
+
+*******************************************************************
+*******************************************************************
+**************FILE CONSTRUCTION HERE*******************************
+*******************************************************************
+*******************************************************************
+
+///_reg_a_combined.dta and raised.dta are from RegA semi-annual update folder process
+use 2020H1\files\_reg_a_combined, clear
+keep if latest_q==1
+sort cik datefiled_
+by cik: keep if _n==_N
+keep cik zip state
+destring cik, force replace
+save stub, replace
+
+use 2020H1\files\_reg_a_combined, clear
+keep if latest_q==1
+sort cik datefiled_
+by cik: keep if _n==_N
+keep cik sic
+destring cik, force replace
+save stub2, replace
+
+///(1a) Constructing amounts reported raised in Regulation A+ 7/1/2019-6/30/2020
+///including completed and ongoing offerings
+///for issuers that reported proceeds as of 2019Q2, incremental proceeds are used through 2020Q2
+use 2019H1\files\raised, clear
+keep if amount_raised>0 & amount_raised<.
+keep if datefiled_<=mdy(6,30,2019)
+sort cik tier report_date datefiled_ 
+by cik tier: keep if _n==_N
+keep cik comment amount_r tier
+ren comment comment_2019Q2
+ren amount_raised raised_2019Q2
+save raised_asof2019Q2, replace
+
+use 2020H1\files\raised, clear
+keep if amount_raised>0 & amount_raised<.
+keep if datefiled_<=mdy(6,30,2020)
+sort cik tier report_date datefiled_ 
+by cik tier: keep if _n==_N
+keep cik comment amount_r tier
+ren comment comment_2020Q2
+ren amount_raised raised_2020Q2
+save raised_asof2020Q2, replace
+
+///difference them out
+use raised_asof2020Q2, clear
+joinby cik tier using raised_asof2019Q2, unmatched(master)
+tab _m
+replace raised_2019Q2=0 if _m==1
+drop _m
+*merge location
+joinby cik using stub, unmatched(master)
+tab _m
+***convert to millions
+replace raised_2020Q2=raised_2020Q2/1000000
+replace raised_2019Q2=raised_2019Q2/1000000
+gen incremental_2019Q2to2020Q2=raised_2020Q2-raised_2019Q2
+***amount incrementally raised in the past 12mo ending 2019H1
+tabstat incremental_2019Q2to2020Q2 if incremental_2019Q2to2020Q2>0 & incremental_2019Q2to2020Q2<., stats(mean p50 N sum)
+***amount raised in the years since inception of Reg A+ ending 2020H1
+tabstat raised_2020Q2 if raised_2020Q2>0 & raised_2020Q2<., stats(mean p50 N sum)
+label var tier "Offering tier"
+label var raised_2019Q2 "Capital reported raised since inception of Reg A+ (June 19, 2015) through 2019Q2"
+label var incremental_2019Q2to2020Q2 "Incremental capital reported raised in the 12m ending 2020Q2"
+label var raised_2020Q2 "Capital reported raised since inception of Reg A+ (June 19, 2015) through 2020Q2"
+drop _m comment*
+ren state state
+ren zip zip
+save raised_asof2020Q2_plusincremental12m, replace
+export excel using raised_asof2020Q2_plusincremental12m.xlsx, firstrow(var) replace
+
+///(1b) Constructing amounts reported raised in Regulation A+ 7/1/2017-6/30/2020 (for Wei's team's disaster and rural analysis)
+///including completed and ongoing offerings
+///for issuers that reported proceeds as of 2016Q2, incremental proceeds are used through 2019Q2
+*take vintage as of 20170630
+use 2017H1\files\_reg_a_combined, clear
+keep if latest_q==1
+sort cik filingdate_
+by cik: keep if _n==_N
+gen tier=1 if indicatetier=="Tier1"
+replace tier=2 if indicatetier=="Tier2"
+keep cik tier
+destring cik, force replace
+save 2017H1\files\latest_tier, replace
+use 2017H1\files\raised, clear
+joinby cik using 2017H1\files\latest_tier, unmatched(master)
+tab _m
+drop _m
+keep if amount_raised>0 & amount_raised<.
+format %td datefiled_
+keep if datefiled_<=mdy(6,30,2017)
+sort cik tier report_date datefiled_ 
+by cik tier: keep if _n==_N
+keep cik amount_r tier
+ren amount_raised raised_2017Q2
+save raised_asof2017Q2, replace
+///difference them out
+use raised_asof2020Q2, clear
+joinby cik tier using raised_asof2017Q2, unmatched(master)
+tab _m
+replace raised_2017Q2=0 if _m==1
+drop _m
+*merge location
+joinby cik using stub, unmatched(master)
+tab _m
+*convert to millions
+replace raised_2020Q2=raised_2020Q2/1000000
+replace raised_2017Q2=raised_2017Q2/1000000
+gen incremental_2017Q2to2020Q2=raised_2020Q2-raised_2017Q2
+***amount incrementally raised in the past 36mo ending 2020H1
+tabstat incremental_2017Q2to2020Q2 if incremental_2017Q2to2020Q2>0 & incremental_2017Q2to2020Q2<., stats(mean p50 N sum)
+label var tier "Offering tier"
+label var raised_2017Q2 "Capital reported raised since inception of Reg A+ (June 19, 2015) through 2017Q2"
+label var incremental_2017Q2to2020Q2 "Incremental capital reported raised in the 36m ending 2020Q2"
+label var raised_2020Q2 "Capital reported raised since inception of Reg A+ (June 19, 2015) through 2020Q2"
+drop _m comment*
+ren state state
+ren zip zip
+save raised_asof2020Q2_plusincremental36m, replace
+export excel using raised_asof2020Q2_plusincremental36m.xlsx, firstrow(var) replace
+
+///(3) Constructing amounts sought in newly qualified Regulation A+ offerings 7/1/2019-6/30/2020
+///excluding post-qualification amendments; excluding offerings withdrawn as of 2020Q2
+use 2020H1\files\_reg_a_combined, clear
+*already excludes withdrawn and abandoned offerings as of 2020Q2
+*only keep offerings qualified as of 2019Q2
+keep if qualif==1
+*exclude post-qualification amendments
+keep if subtype=="1-A" | subtype=="1-A/A"
+*offerings qualified during the period in question
+keep if finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(7,1,2019)
+*select latest pre-qualification amendment
+sort cik fileno2 finaldispdate_ datefiled_
+by cik fileno2: keep if _n==_N
+count
+save sought_newqualif_12m_ending2020Q2, replace
+export excel using sought_newqualif_12m_ending2020Q2.xlsx, firstrow(var) replace
+
+///(4) Constructing amounts sought in newly qualified Regulation A+ offerings 7/1/2017-6/30/2020
+///excluding post-qualification amendments; excluding offerings withdrawn as of 2019Q2
+use 2020H1\files\_reg_a_combined, clear
+*already excludes withdrawn and abandoned offerings as of 2020Q2
+*only keep offerings qualified as of 2020Q2
+keep if qualif==1
+*exclude post-qualification amendments
+keep if subtype=="1-A" | subtype=="1-A/A"
+*offerings qualified during the period in question
+keep if finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(7,1,2017)
+*select latest pre-qualification amendment
+sort cik fileno2 finaldispdate_ datefiled_
+by cik fileno2: keep if _n==_N
+count
+save sought_newqualif_36m_ending2020Q2, replace
+export excel using sought_newqualif_36m_ending2020Q2.xlsx, firstrow(var) replace
+
+
+*******************************************************************
+*******************************************************************
+**************ANALYSIS FOR TABLES/FIGURES BEGINS HERE**************
+*******************************************************************
+*******************************************************************
+
+*******************************************************************
+***p.11 of the report "What regulatory pathways are companies using to raise capital?"
+///# of newly qualified offerings ex. amendments under Tier 1, Tier 2; last 12m; 
+use sought_newqualif_12m_ending2020Q2, clear
+gen tier=1 if indicatetier=="Tier1"
+replace tier=2 if indicatetier=="Tier2"
+egen newqual12m_num=count(fileno2), by(tier)
+collapse newqual12m_num, by(tier)
+save tmp, replace
+///aggregate, mean, median incremental proceeds reported raised under Tier 1, Tier 2; last 12m; 
+use raised_asof2020Q2_plusincremental12m, clear
+keep if incremental>0 & incremental<.
+foreach k in sum mean median {
+egen raised12m_`k'=`k'(incremental), by(tier)
+}
+collapse raised12m*, by(tier)
+joinby tier using tmp
+order tier newqual raised*
+*new qualifications only - excludes amendments after qualification
+label var newqual12m_num "# of newly qualified Reg A offerings in 12m ending 6/2020"
+*includes new reports of proceeds and incremental reports of proceeds in ongoing offerings
+label var raised12m_sum "Aggregate Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+label var raised12m_mean "Mean Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+label var raised12m_median "Median Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+export excel OASB_2020Report_RegA.xlsx, sheet(aggregates, replace) firstrow(varl)
+erase tmp.dta
+
+///mean and median for Tier 1+ Tier2 - 2020-09-11
+use raised_asof2020Q2_plusincremental12m, clear
+keep if incremental>0 & incremental<.
+foreach k in sum mean median {
+egen raised12m_`k'=`k'(incremental)
+}
+collapse raised12m*
+order raised*
+*includes new reports of proceeds and incremental reports of proceeds in ongoing offerings
+label var raised12m_sum "Aggregate Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+label var raised12m_mean "Mean Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+label var raised12m_median "Median Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+list
+erase tmp.dta
+
+*******************************************************************
+***page 13. How are companies using the offering types in the industries that raise the most capital (excluding pooled funds)?
+*******************************************************************
+///new industry group definitions from SIC codes for greater comparability with Form D groupings 
+program industrygroup2
+gen indgroup=""
+replace indgroup="Agriculture" if sic<=199 & sic>=100 | sic<=299 & sic>=200 | sic<=799 & sic>=700 | sic==2048
+replace indgroup="Banking and Financial Services" if sic>=6000 & sic<=6000 | sic>=6010 & sic<=6019 | sic>=6020 & sic<=6020 | sic>=6021 & sic<=6021 | sic>=6022 & sic<=6022 | sic>=6023 & sic<=6024 | sic>=6025 & sic<=6025 | sic>=6026 & sic<=6026 | sic>=6027 & sic<=6027 | sic>=6028 & sic<=6029 | sic>=6030 & sic<=6036 | sic>=6040 & sic<=6059 | sic>=6060 & sic<=6062 | sic>=6080 & sic<=6082 | sic>=6090 & sic<=6099 | sic>=6100 & sic<=6100 | sic>=6110 & sic<=6111 | sic>=6112 & sic<=6113 | sic>=6120 & sic<=6129 | sic>=6130 & sic<=6139 | sic>=6140 & sic<=6149 | sic>=6150 & sic<=6159 | sic>=6160 & sic<=6169 | sic>=6170 & sic<=6179 | sic>=6190 & sic<=6199 | sic>=6300 & sic<=6300 | sic>=6310 & sic<=6319 | sic>=6330 & sic<=6331 | sic>=6350 & sic<=6351 | sic>=6360 & sic<=6361 | sic>=6370 & sic<=6379 | sic>=6390 & sic<=6399 | sic>=6400 & sic<=6411 | sic>=6200 & sic<=6299 | sic>=6700 & sic<=6700 | sic>=6710 & sic<=6719 | sic>=6720 & sic<=6722 | sic>=6723 & sic<=6723 | sic>=6724 & sic<=6724 | sic>=6725 & sic<=6725 | sic>=6726 & sic<=6726 | sic>=6730 & sic<=6733 | sic>=6740 & sic<=6779 | sic>=6790 & sic<=6791 | sic>=6792 & sic<=6792 | sic>=6793 & sic<=6793 | sic>=6794 & sic<=6794 | sic>=6795 & sic<=6795 | sic==6797 | sic>=6799 & sic<=6799
+replace indgroup="Business Services" if int(sic/100)==42 | int(sic/10) >= 441 & int(sic/10)<=444 | int(sic/10)>=473 & int(sic/10)<=478 | int(sic/10)>=494 & int(sic/10)<=497 | sic>=2750 & sic<=2759 | sic>=3993 & sic<=3993 | sic>=7218 & sic<=7218 | sic>=7300 & sic<=7300 | sic>=7310 & sic<=7319 | sic>=7320 & sic<=7329 | sic>=7330 & sic<=7339 | sic>=7340 & sic<=7342 | sic>=7349 & sic<=7349 | sic>=7350 & sic<=7351 | sic>=7353 & sic<=7353 | sic>=7359 & sic<=7359 | sic>=7360 & sic<=7369 | sic>=7380 & sic<=7380 | sic>=7381 & sic<=7382 | sic>=7383 & sic<=7383 | sic>=7384 & sic<=7384 | sic>=7385 & sic<=7385 | sic>=7389 & sic<=7390 | sic>=7391 & sic<=7391 | sic>=7392 & sic<=7392 | sic>=7393 & sic<=7393 | sic>=7394 & sic<=7394 | sic>=7396 & sic<=7396 | sic>=7397 & sic<=7397 | sic>=7399 & sic<=7399 | sic==7513 | sic>=7519 & sic<=7519 | sic>=8700 & sic<=8700 | sic>=8710 & sic<=8713 | sic>=8720 & sic<=8721 | sic>=8730 & sic<=8734 | sic>=8740 & sic<=8748 | sic>=8900 & sic<=8910 | sic>=8911 & sic<=8911 | sic>=8920 & sic<=8999 
+replace indgroup="Energy" if int(sic/10)==461 | int(sic/10)==517 | sic>=1200 & sic<=1299 | sic>=1300 & sic<=1300 | sic>=1310 & sic<=1319 | sic>=1320 & sic<=1329 | sic>=1330 & sic<=1339 | sic>=1370 & sic<=1379 | sic>=1380 & sic<=1380 | sic>=1381 & sic<=1381 | sic>=1382 & sic<=1382 | sic>=1389 & sic<=1389 | sic>=2900 & sic<=2912 | sic>=2990 & sic<=2999 | sic>=4900 & sic<=4900 | sic>=4910 & sic<=4911 | sic>=4920 & sic<=4922 | sic>=4923 & sic<=4923 | sic>=4924 & sic<=4925 | sic>=4930 & sic<=4931 | sic>=4932 & sic<=4932 | sic>=4939 & sic<=4939 
+replace indgroup="Health Care" if int(sic/10)==512 | sic==5047 | sic==5048 | int(sic/10)==283 | sic>=8000 & sic<=8099 | sic>=3693 & sic<=3693 | sic>=3840 & sic<=3849 | sic>=3850 & sic<=3851 | sic>=2830 & sic<=2830 | sic>=2831 & sic<=2831 | sic>=2833 & sic<=2833 | sic>=2834 & sic<=2834 | sic>=2835 & sic<=2835 | sic>=2836 & sic<=2836 | sic>=6320 & sic<=6329 | sic>=7352 & sic<=7352 
+replace indgroup="Real Estate" if sic>=6500 & sic<=6500 | sic>=6510 & sic<=6510 | sic>=6512 & sic<=6512 | sic>=6513 & sic<=6513 | sic>=6514 & sic<=6514 | sic>=6515 & sic<=6515 | sic>=6517 & sic<=6519 | sic>=6520 & sic<=6529 | sic>=6530 & sic<=6531 | sic>=6532 & sic<=6532 | sic>=6540 & sic<=6541 | sic>=6550 & sic<=6553 | sic>=6590 & sic<=6599 | sic>=6610 & sic<=6611 | sic>=1500 & sic<=1511 | sic>=1520 & sic<=1529 | sic>=1530 & sic<=1539 | sic>=1540 & sic<=1549 | sic>=1600 & sic<=1699 | sic>=1700 & sic<=1799 | sic==6798
+replace indgroup="Technology" if sic==5043 | sic==5044 | sic==5045 | sic==5049 | sic==5063 | sic==5064 | sic==5065 | sic>=3570 & sic<=3579 | sic>=3622 & sic<=3622 | sic>=3661 & sic<=3661 | sic>=3662 & sic<=3662 | sic>=3663 & sic<=3663 | sic>=3664 & sic<=3664 | sic>=3665 & sic<=3665 | sic>=3666 & sic<=3666 | sic>=3669 & sic<=3669 | sic>=3670 & sic<=3679 | sic>=3680 & sic<=3680 | sic>=3681 & sic<=3681 | sic>=3682 & sic<=3682 | sic>=3683 & sic<=3683 | sic>=3684 & sic<=3684 | sic>=3685 & sic<=3685 | sic>=3686 & sic<=3686 | sic>=3687 & sic<=3687 | sic>=3688 & sic<=3688 | sic>=3689 & sic<=3689 | sic>=3810 & sic<=3810 | sic>=3811 & sic<=3811 | sic>=3812 & sic<=3812 | sic>=3820 & sic<=3820 | sic>=3821 & sic<=3821 | sic>=3822 & sic<=3822 | sic>=3823 & sic<=3823 | sic>=3824 & sic<=3824 | sic>=3825 & sic<=3825 | sic>=3826 & sic<=3826 | sic>=3827 & sic<=3827 | sic>=3829 & sic<=3829 | sic>=3830 & sic<=3839 | sic>=4800 & sic<=4800 | sic>=4810 & sic<=4813 | sic>=4820 & sic<=4822 | sic>=4830 & sic<=4839 | sic>=4840 & sic<=4841 | sic>=4880 & sic<=4889 | sic>=4890 & sic<=4890 | sic>=4891 & sic<=4891 | sic>=4892 & sic<=4892 | sic>=4899 & sic<=4899 | sic>=7370 & sic<=7372 | sic>=7373 & sic<=7373 | sic>=7374 & sic<=7374 | sic>=7375 & sic<=7375 | sic>=7376 & sic<=7376 | sic>=7377 & sic<=7377 | sic>=7378 & sic<=7378 | sic>=7379 & sic<=7379 
+replace indgroup="Restaurants" if int(sic/10)==581 | sic==5812 | sic==5813
+replace indgroup="Retailing" if sic>=5200 & sic<=5200 | sic>=5210 & sic<=5219 | sic>=5220 & sic<=5229 | sic>=5230 & sic<=5231 | sic>=5250 & sic<=5251 | sic>=5260 & sic<=5261 | sic>=5270 & sic<=5271 | sic>=5300 & sic<=5300 | sic>=5310 & sic<=5311 | sic>=5320 & sic<=5320 | sic>=5330 & sic<=5331 | sic>=5334 & sic<=5334 | sic>=5340 & sic<=5349 | sic>=5390 & sic<=5399 | sic>=5400 & sic<=5400 | sic>=5410 & sic<=5411 | sic>=5412 & sic<=5412 | sic>=5420 & sic<=5429 | sic>=5430 & sic<=5439 | sic>=5440 & sic<=5449 | sic>=5450 & sic<=5459 | sic>=5460 & sic<=5469 | sic>=5490 & sic<=5499 | sic>=5500 & sic<=5500 | sic>=5510 & sic<=5529 | sic>=5530 & sic<=5539 | sic>=5540 & sic<=5549 | sic>=5550& sic<=5559 | sic>=5560 & sic<=5569 | sic>=5570 & sic<=5579 | sic>=5590 & sic<=5599 | sic>=5600 & sic<=5699 | sic>=5700 & sic<=5700 | sic>=5710 & sic<=5719 | sic>=5720 & sic<=5722 | sic>=5730 & sic<=5733 | sic>=5734 & sic<=5734 | sic>=5735 & sic<=5735 | sic>=5736 & sic<=5736 | sic>=5750& sic<=5799 | sic>=5900& sic<=5900 | sic>=5910 & sic<=5912 | sic>=5920 & sic<=5929 | sic>=5930 & sic<=5932 | sic>=5940 & sic<=5940 | sic>=5941 & sic<=5941 | sic>=5942 & sic<=5942 | sic>=5943 & sic<=5943 | sic>=5944 & sic<=5944 | sic>=5945 & sic<=5945 | sic>=5946 & sic<=5946 | sic>=5947 & sic<=5947 | sic>=5948 & sic<=5948 | sic>=5949 & sic<=5949 | sic>=5950 & sic<=5959 | sic>=5960 & sic<=5969 | sic>=5970 & sic<=5979 | sic>=5980 & sic<=5989 | sic>=5990 & sic<=5990 | sic>=5992 & sic<=5992 | sic>=5993 & sic<=5993 | sic>=5994 & sic<=5994 | sic>=5995 & sic<=5995 | sic>=5999 & sic<=5999 
+replace indgroup="Manufacturing" if indgroup=="" & sic>=2000 & sic<=3999
+replace indgroup="Travel" if int(sic/100)==70 | int(sic/100)==40 | int(sic/100)==41 | sic==4011 | sic==4013 | sic==4111 | sic==4119 | sic==4121 | sic==4131 | sic==4141 | sic==4142 | sic==4173 | sic==4481 | sic==4482 | sic==4489 | sic==4512 | sic==4513 | sic==4522 | sic==4581 | sic==4724 | sic==4725 | sic==4729 | sic==7514
+replace indgroup="Other" if indgroup=="" & sic<.
+replace indgroup="Other" if indgroup=="Agriculture" | indgroup=="Business Services" | indgroup=="Restaurants" | indgroup=="Retailing" | indgroup=="Travel"
+end
+////aggregate amounts raised in 12m ending 2020Q2
+use raised_asof2020Q2_plusincremental12m, clear
+joinby cik using stub2, unmatched(master)
+tab _m
+drop _m
+industrygroup2
+tab indgroup
+list if indgroup=="Energy"
+keep if incremental>0
+collapse(sum) incremental, by(indgroup)
+ren incremental raised12m_sum
+label var raised12m_sum "Aggregate Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+export excel OASB_2020Report_RegA.xlsx, sheet(industry, replace) firstrow(varl)
+
+
+*******************************************************************
+***page 14. Distribution by issuer location
+*******************************************************************
+***Number of qualified Regulation A+ offerings, ex. amendments, last 12m
+use sought_newqualif_12m_ending2020Q2, clear
+gen d=1
+tab state if real(substr(state,2,1))<.
+replace state="Non-US" if real(substr(state,2,1))<.
+collapse(count) d, by(state)
+ren d newqual12m_num 
+label var newqual12m_num "# of newly qualified Reg A offerings in 12m ending 6/2020"
+ren state state
+save tmp_1, replace
+
+***capital reported raised; last 12m
+use raised_asof2020Q2_plusincremental12m, clear
+drop raised_* zip cik tier
+keep if incremental>0 & incremental<.
+tab state if real(substr(state,2,1))<.
+replace state="Non-US" if real(substr(state,2,1))<.
+collapse(sum) incremental, by(state)
+ren incremental raised12m_sum 
+label var raised12m_sum "Aggregate Reg A proceeds reported in 12m ending 6/2020 ($ mil.)"
+save tmp_2, replace
+
+use j:\CFLookback\geo\match2018_, clear
+joinby state using tmp_1, unmatched(both)
+tab _m
+drop _m
+replace newqual12m_num=0 if newqual12m_num==.
+joinby state using tmp_2, unmatched(both)
+tab _m
+drop _m
+label var state "State"
+drop _ID
+replace raised12m_sum=0 if raised12m_sum==.
+sort state
+export excel using OASB_2020Report_RegA.xlsx, sheet(state, replace) firstrow(varl)
+
+erase tmp_1.dta
+erase tmp_2.dta
+
+*******************************************************************
+***page 35-36 input for rural and disaster analysis -- 
+*number of qualified offerings, ex. amendments, last 36m ending 2020Q2, by zip code
+***Number of qualified Regulation A+ offerings, ex. amendments, last 12m
+use sought_newqualif_36m_ending2020Q2, clear
+gen d=1
+tab zip if real(zip)==.
+drop if real(zip)==.
+collapse(count) d, by(zip)
+ren d newqual36m_num 
+ren zip zip
+label var newqual36m_num "# of newly qualified Reg A offerings in 36m ending 6/2020"
+save tmp_1, replace
+
+***Number of unique issuers in newly qualified Regulation A+ offerings, ex. amendments, last 36m
+use sought_newqualif_36m_ending2020Q2, clear
+sort cik
+by cik: keep if _n==1
+gen d=1
+tab zip if real(zip)==.
+drop if real(zip)==.
+collapse(count) d, by(zip)
+ren d issuers36m_num 
+ren zip zip
+label var issuers36m_num "# of unique issuers in newly qualified Reg A offerings in 36m ending 6/2020"
+save tmp_2, replace
+
+***capital reported raised; last 36m
+use raised_asof2020Q2_plusincremental36m, clear
+keep if incremental>0 & incremental<.
+tab zip if real(zip)==.
+replace zip=substr(zip,1,strpos(zip,"-")-1) if strpos(zip,"-")>0
+drop if real(zip)==.
+collapse(sum) incremental, by(zip)
+ren incremental raised36m_sum 
+ren zip zip
+label var raised36m_sum "Aggregate Reg A proceeds reported in 36m ending 6/2020 ($ mil.)"
+save tmp_3, replace
+
+use tmp_1, clear
+joinby zip using tmp_2, unmatched(both)
+tab _m
+drop _m
+joinby zip using tmp_3, unmatched(both)
+tab _m
+drop _m
+replace issuers36m_num=0 if issuers36m_num==.
+replace newqual36m_num=0 if newqual36m_num==.
+replace raised36m_sum=0 if raised36m_sum==.
+export excel using OASB_2020Report_RegA.xlsx, sheet(forrural, replace) firstrow(varl)
+
+erase tmp_1.dta
+erase tmp_2.dta
+erase tmp_3.dta
+
+*******************************************************************
+***covid_monthly
+*[not excluding abandoments/withdrawals, differently from prior tables]
+*[withdrawals/abandonments have a lag so excluding wsithdrawals would be biased in favor of 2020H1 numbers
+*******************************************************************
+
+*number of new and amended filings, not excluding subsequent withdrawals/abandonments
+*validation - # filings downloaded from internal EDGAR without processing
+import excel using 2020H1\files\edgarlist_1-A_filed.xls, firstrow clear case(lower)
+gen yearm=substr(filingdate,1,7)
+gen d=1
+drop if strpos(subtype,"W")>0
+keep if real(substr(yearm,1,4))==2019 | real(substr(yearm,1,4))==2020
+keep if real(substr(yearm,6,2))<=6 & real(substr(yearm,6,2))>=1
+collapse(count) d, by(subtype yearm)
+sort yearm subtype
+collapse(sum) d, by(subtype)
+list
+
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if datefiled_<=mdy(6,30,2019) & datefiled_>=mdy(1,1,2019) | datefiled_<=mdy(6,30,2020) & datefiled_>=mdy(1,1,2020)
+count
+gen initial_filed=1 if subm=="1-A"
+gen amend_filed=1 if subm=="1-A/A" | subm=="1-A POS"
+*consolidate filings of the same type made on the same date as likely duplicates 
+sort cik datefiled_ initial_filed accessionno
+by cik datefiled_ initial_filed: gen n=_N
+list cik accession datefiled_ totaloffering subm if n>1
+by cik datefiled_: keep if _n==_N
+gen yearmo=year(datefiled_)*100+month(datefiled_)
+collapse(sum) initial_filed amend_filed, by(yearmo)
+label var initial_filed "# of new Form 1-A filings"
+label var amend_filed "# of amended Form 1-A filings"
+save tmp_1, replace
+
+*number of new and pqa qualifications, not excluding subsequent withdrawals
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+format %td finaldispdate_
+keep if qualif==1
+keep if finaldispdate_<=mdy(6,30,2019) & finaldispdate_>=mdy(1,1,2019) | finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(1,1,2020)
+count
+gen initial_qual=1 if subm!="1-A POS"
+gen pqa_qual=1 if subm=="1-A POS"
+gen yearmo=year(finaldispdate_)*100+month(finaldispdate_)
+*consolidate all filings qualified on the same date as likely pertaining to same offering (e.g. initial and amendments to Form 1-A)
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering subm if n>1
+by cik finaldispdate_: keep if _n==_N
+collapse(sum) initial_qual pqa_qual, by(yearmo)
+label var initial_qual "# of new qualifications of Form 1-A filings (ex. PQAs)"
+label var pqa_qual "# of PQAs qualifications of Form 1-A filings"
+save tmp_2, replace
+
+
+*amount sought in new filings, not excluding subsequent withdrawals and abandonments
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if datefiled_<=mdy(6,30,2019) & datefiled_>=mdy(1,1,2019) | datefiled_<=mdy(6,30,2020) & datefiled_>=mdy(1,1,2020)
+count
+gen initial_filed=1 if subm=="1-A"
+keep if initial_filed==1
+gen yearmo=year(datefiled_)*100+month(datefiled_)
+tab finaldc if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+tab totaloffering_checked if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+sum totaloffering if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+drop totaloffering_checked
+drop _m
+joinby cik fileno accessionno using 2020H1\files\OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab subm
+replace totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+*hand-check amounts sought in the abandoned/withdrawn new filings not in prior report
+list cik accession datefiled_ totaloffering totaloffering_checked if real(totaloffering_checked)==. | real(totaloffering_checked)==0
+replace totaloffering=. if totaloffering_checked=="n.a."
+replace totaloffering=12000000 if accession=="000170924720000002"
+replace totaloffering=20000000 if accession=="000175425920000002"
+replace totaloffering=20000000 if accession=="000175425920000004"
+replace totaloffering=50000000 if accession=="000080617119000042"
+replace totaloffering=. if accession=="000176621419000015"
+replace totaloffering=1100820 if accession=="000176628020000003"
+replace totaloffering=. if accession=="000164033420001535" 
+replace totaloffering=. if accession=="000119312520058978"
+replace totaloffering=. if accession=="000106299319001636"
+replace totaloffering=5000000 if accession=="000111776819000016"
+*drop if missing
+keep if totaloffering<.
+*consolidate filings made on the same date as likely duplicates
+sort cik datefiled_ accessionno
+by cik datefiled_: gen n=_N
+list cik accession datefiled_ totaloffering if n>1
+by cik datefiled_: keep if _n==_N
+*convert to mln
+replace totaloffering=totaloffering/1000000
+foreach k in sum mean median {
+egen newfile_`k'=`k'(totaloffering), by(yearmo)
+}
+collapse newfile_*, by(yearmo)
+label var newfile_sum "Aggregate offer amounts in new Form 1-A filings (incl. withdrawn)"
+label var newfile_mean "Mean offer amounts in new Form 1-A filings (incl. withdrawn)"
+label var newfile_median "Median offer amounts in new Form 1-A filings (incl. withdrawn)"
+save tmp_3, replace
+
+
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if finaldispdate_<=mdy(6,30,2019) & finaldispdate_>=mdy(1,1,2019) | finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(1,1,2020)
+keep if qualif==1
+drop if subm=="1-A POS"
+gen yearmo=year(finaldispdate_)*100+month(finaldispdate_)
+tab finaldc if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+sum totaloffering if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+drop totaloffering_checked
+drop _m
+joinby cik fileno accessionno using 2020H1\files\OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab subm
+replace totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+*hand-check amounts sought in the abandoned/withdrawn new filings not in prior report
+list cik accession datefiled_ totaloffering totaloffering_checked if real(totaloffering_checked)==. | real(totaloffering_checked)==0
+replace totaloffering=. if totaloffering_checked=="n.a."
+replace totaloffering=5000000 if accession=="000121390019015358"
+replace totaloffering=3000000 if accession=="000152013819000350" 
+replace totaloffering=3000000 if accession=="000152013819000435"
+replace totaloffering=. if accession=="000106299319001636"
+replace totaloffering=. if accession=="000106299319001809"
+*drop if missing (e.g. if amendment is only filed to provide consent opinion)
+keep if totaloffering<.
+*consolidate filings qualified on the same date
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering if n>1
+by cik finaldispdate_: keep if _n==_N
+*convert to mln
+replace totaloffering=totaloffering/1000000
+foreach k in sum mean median {
+egen newqual_`k'=`k'(totaloffering), by(yearmo)
+}
+collapse newqual_*, by(yearmo)
+label var newqual_sum "Aggregate offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+label var newqual_mean "Mean offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+label var newqual_median "Median offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+save tmp_4, replace
+
+use tmp_1, clear
+joinby yearmo using tmp_2, unmatched(master)
+tab _m
+drop _m
+joinby yearmo using tmp_3, unmatched(master)
+tab _m
+drop _m
+joinby yearmo using tmp_4, unmatched(master)
+tab _m
+drop _m
+sort yearmo
+list
+
+export excel using OASB_2020Report_RegA.xlsx, sheet(covid, replace) firstrow(varl)
+
+
+//DIMS check - amt of abandonments/withdrawals of pre-2020H1 filings between 2019H1 and 2020H1
+use 2019H1\files\_reg_a_combined, clear
+joinby cik fileno2 accession using 2020H1\files\_reg_a_combined, unmatched(master)
+keep if _m==1
+sort cik fileno2 datefiled_
+by cik fileno2: keep if _n==_N
+sum totaloffering_checked
+dis r(sum)/1000000
+*a LOT (~59) of withdrawals and abandonments accounting for $1.3 bln sought
+*not counting reductions in amt sought
+
+erase tmp_1.dta
+erase tmp_2.dta
+erase tmp_3.dta
+erase tmp_4.dta
+
+
+///get COVID data for 2019Q4
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if datefiled_<=mdy(12,30,2019) & datefiled_>=mdy(1,1,2019) | datefiled_<=mdy(9,30,2020) & datefiled_>=mdy(1,1,2020)
+count
+gen initial_filed=1 if subm=="1-A"
+gen amend_filed=1 if subm=="1-A/A" | subm=="1-A POS"
+*consolidate filings of the same type made on the same date as likely duplicates 
+sort cik datefiled_ initial_filed accessionno
+by cik datefiled_ initial_filed: gen n=_N
+list cik accession datefiled_ totaloffering subm if n>1
+by cik datefiled_: keep if _n==_N
+gen yearmo=year(datefiled_)*100+month(datefiled_)
+collapse(sum) initial_filed amend_filed, by(yearmo)
+label var initial_filed "# of new Form 1-A filings"
+label var amend_filed "# of amended Form 1-A filings"
+save tmp_1, replace
+
+*number of new and pqa qualifications, not excluding subsequent withdrawals
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+format %td finaldispdate_
+keep if qualif==1
+keep if finaldispdate_<=mdy(12,31,2019) & finaldispdate_>=mdy(1,1,2019) | finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(1,1,2020)
+count
+gen initial_qual=1 if subm!="1-A POS"
+gen pqa_qual=1 if subm=="1-A POS"
+gen yearmo=year(finaldispdate_)*100+month(finaldispdate_)
+*consolidate all filings qualified on the same date as likely pertaining to same offering (e.g. initial and amendments to Form 1-A)
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering subm if n>1
+by cik finaldispdate_: keep if _n==_N
+collapse(sum) initial_qual pqa_qual, by(yearmo)
+label var initial_qual "# of new qualifications of Form 1-A filings (ex. PQAs)"
+label var pqa_qual "# of PQAs qualifications of Form 1-A filings"
+save tmp_2, replace
+
+
+*amount sought in new filings, not excluding subsequent withdrawals and abandonments
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if datefiled_<=mdy(12,31,2019) & datefiled_>=mdy(1,1,2019) | datefiled_<=mdy(6,30,2020) & datefiled_>=mdy(1,1,2020)
+count
+gen initial_filed=1 if subm=="1-A"
+keep if initial_filed==1
+gen yearmo=year(datefiled_)*100+month(datefiled_)
+tab finaldc if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+tab totaloffering_checked if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+sum totaloffering if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+drop totaloffering_checked
+drop _m
+joinby cik fileno accessionno using 2020H1\files\OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab subm
+replace totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+*hand-check amounts sought in the abandoned/withdrawn new filings not in prior report
+list cik accession datefiled_ totaloffering totaloffering_checked if real(totaloffering_checked)==. | real(totaloffering_checked)==0
+replace totaloffering=. if totaloffering_checked=="n.a."
+replace totaloffering=12000000 if accession=="000170924720000002"
+replace totaloffering=20000000 if accession=="000175425920000002"
+replace totaloffering=20000000 if accession=="000175425920000004"
+replace totaloffering=50000000 if accession=="000080617119000042"
+replace totaloffering=. if accession=="000176621419000015"
+replace totaloffering=1100820 if accession=="000176628020000003"
+replace totaloffering=. if accession=="000164033420001535" 
+replace totaloffering=. if accession=="000119312520058978"
+replace totaloffering=. if accession=="000106299319001636"
+replace totaloffering=5000000 if accession=="000111776819000016"
+list cik accession datefiled_ totaloffering totaloffering_checked if datefiled_<=mdy(12,31,2019) & datefiled_>=mdy(7,1,2019) & real(totaloffering_checked)==. | datefiled_<=mdy(9,30,2019) & datefiled_>=mdy(7,1,2019) & real(totaloffering_checked)==0
+replace totaloffering=5000000 if accession=="000121390019015358"
+replace totaloffering=totaloffering if accession=="000147793219005137"
+replace totaloffering=totaloffering if accession=="000114420419040467"
+replace totaloffering=totaloffering if accession=="000121390019015111"
+replace totaloffering=totaloffering if accession=="000172146919000013"
+replace totaloffering=50000000 if accession=="000174330519000009"
+replace totaloffering=50000000 if accession=="000174330519000010"
+replace totaloffering=totaloffering if accession=="000114420419035421"
+replace totaloffering=totaloffering if accession=="000114420419034549"
+replace totaloffering=totaloffering if accession=="000114420419034533"
+replace totaloffering=totaloffering if accession=="000114420419034536"
+replace totaloffering=totaloffering if accession=="000114420419034541"
+replace totaloffering=totaloffering if accession=="000114420419034545"
+replace totaloffering=totaloffering if accession=="000177519619000006"
+replace totaloffering=totaloffering if accession=="000121390019012236"
+
+replace totaloffering=totaloffering if accession=="000121390019015358"
+replace totaloffering=50000000 if accession=="000147793219005622"
+replace totaloffering=3000000 if accession=="000152013819000350"
+replace totaloffering=totaloffering if accession=="000147793219005137"
+replace totaloffering=totaloffering if accession=="000114420419040467"
+replace totaloffering=totaloffering if accession=="000121390019015111"
+replace totaloffering=totaloffering if accession=="000172146919000013"
+replace totaloffering=totaloffering if accession=="000174330519000009"
+replace totaloffering=totaloffering if accession=="000174330519000010"
+replace totaloffering=10593900 if accession=="000106594919000150"
+replace totaloffering=totaloffering if accession=="000114420419035421"
+replace totaloffering=totaloffering if accession=="000114420419034549"
+replace totaloffering=totaloffering if accession=="000114420419034533"
+replace totaloffering=totaloffering if accession=="000114420419034536"
+replace totaloffering=totaloffering if accession=="000114420419034541"
+replace totaloffering=totaloffering if accession=="000114420419034545"
+replace totaloffering=totaloffering if accession=="000177519619000006"
+replace totaloffering=20000000 if accession=="000177519619000010"
+replace totaloffering=totaloffering if accession=="000121390019012236"
+replace totaloffering=totaloffering if accession=="000137647419000271"
+
+*drop if missing
+keep if totaloffering<.
+*consolidate filings made on the same date as likely duplicates
+sort cik datefiled_ accessionno
+by cik datefiled_: gen n=_N
+list cik accession datefiled_ totaloffering if n>1
+by cik datefiled_: keep if _n==_N
+*convert to mln
+replace totaloffering=totaloffering/1000000
+foreach k in sum mean median {
+egen newfile_`k'=`k'(totaloffering), by(yearmo)
+}
+collapse newfile_*, by(yearmo)
+label var newfile_sum "Aggregate offer amounts in new Form 1-A filings (incl. withdrawn)"
+label var newfile_mean "Mean offer amounts in new Form 1-A filings (incl. withdrawn)"
+label var newfile_median "Median offer amounts in new Form 1-A filings (incl. withdrawn)"
+save tmp_3, replace
+
+
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if finaldispdate_<=mdy(12,30,2019) & finaldispdate_>=mdy(1,1,2019) | finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(1,1,2020)
+keep if qualif==1
+drop if subm=="1-A POS"
+gen yearmo=year(finaldispdate_)*100+month(finaldispdate_)
+tab finaldc if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+sum totaloffering if strpos(finaldc,"WD") | strpos(lower(finaldc),"withdrawn")>0 | strpos(finaldc,"Abandoned")>0
+drop totaloffering_checked
+drop _m
+joinby cik fileno accessionno using 2020H1\files\OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab subm
+replace totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+*hand-check amounts sought in the abandoned/withdrawn new filings not in prior report
+list cik accession datefiled_ totaloffering totaloffering_checked if real(totaloffering_checked)==. | real(totaloffering_checked)==0
+replace totaloffering=. if totaloffering_checked=="n.a."
+replace totaloffering=5000000 if accession=="000121390019015358"
+replace totaloffering=3000000 if accession=="000152013819000350" 
+replace totaloffering=3000000 if accession=="000152013819000435"
+replace totaloffering=. if accession=="000106299319001636"
+replace totaloffering=. if accession=="000106299319001809"
+list cik accession datefiled_ totaloffering totaloffering_checked if finaldispdate_<=mdy(12,30,2019) & finaldispdate_>=mdy(7,1,2019) & real(totaloffering_checked)==. | real(totaloffering_checked)==0
+*drop if missing (e.g. if amendment is only filed to provide consent opinion)
+keep if totaloffering<.
+*consolidate filings qualified on the same date
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering if n>1
+by cik finaldispdate_: keep if _n==_N
+*convert to mln
+replace totaloffering=totaloffering/1000000
+foreach k in sum mean median {
+egen newqual_`k'=`k'(totaloffering), by(yearmo)
+}
+collapse newqual_*, by(yearmo)
+label var newqual_sum "Aggregate offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+label var newqual_mean "Mean offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+label var newqual_median "Median offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+save tmp_4, replace
+
+use tmp_1, clear
+joinby yearmo using tmp_2, unmatched(master)
+tab _m
+drop _m
+joinby yearmo using tmp_3, unmatched(master)
+tab _m
+drop _m
+joinby yearmo using tmp_4, unmatched(master)
+tab _m
+drop _m
+sort yearmo
+list
+
+export excel using OASB_2020Report_RegA_addon.xlsx, sheet(covid2019q4, replace) firstrow(varl)
+erase tmp_1.dta
+erase tmp_2.dta
+erase tmp_3.dta
+erase tmp_4.dta
+
+
+///COVID data for 2020Q3
+*import RegA data from sec.gov/data/dera for 2020Q3
+cd "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegA"
+unzipfile 2020Q3_rega.zip, replace
+import delimited using 2020Q3_rega\REG_A_SUMMARY_INFO.TSV, clear
+gen totaloffering=issueraggregate+securityholderagg 
+ren accession accessionno
+keep accessionno totaloffering
+save stub, replace
+
+*get list of newly qualified filings, ex. PQAs,  from 2020Q3
+cd "J:\Oea\OCF\4. Congressional and Commission Studies\OASB Report to Congress tech assist\2020\RegA"
+import excel using "edgarlist_1-A_through20201019.xls", firstrow clear case(lower)
+tab finaldc
+keep if substr(finaldc,1,1)=="E"
+keep if substr(finaldisp,1,7)=="2020-09" | substr(finaldisp,1,7)=="2020-08" | substr(finaldisp,1,7)=="2020-07"
+destring cik, force replace
+tab subtype
+drop if strpos(subtype,"1-A-W")>0
+keep cik fileno accession filingdate finaldispdate finaldc subtype
+gen yearmo=202007 if substr(finaldisp,1,7)=="2020-07"
+replace yearmo=202008 if substr(finaldisp,1,7)=="2020-08"
+replace yearmo=202009 if substr(finaldisp,1,7)=="2020-09"
+save _2020Q3_newqualif, replace
+
+use _2020Q3_newqualif, clear
+joinby accessionno using stub, unmatched(master)
+ren totaloffering totaloffering_xml
+drop _m
+joinby accessionno using 2020H1\files\_reg_a_combined, unmatched(master)
+keep subtype-totaloffering_xml totaloffering_checked
+count if totaloffering_xml==. & totaloffering_checked<.
+tostring cik, force replace
+gen accession2=subinstr(accessionno,"-","",.)
+gen index_url="https://www.sec.gov/Archives/edgar/data/"+cik+"/"+accession2+"/"+accessionno+"-index.htm" 
+drop accession2
+save _2020Q3_newqualif, replace
+
+import excel using "edgarlist_1-A_through20201019.xls", firstrow clear case(lower)
+keep if substr(filingd,1,7)=="2020-09" | substr(filingd,1,7)=="2020-08" | substr(filingd,1,7)=="2020-07"
+destring cik, force replace
+tab subtype
+keep if subtype=="1-A" | subtype=="1-A POS" | subtype=="1-A/A"
+keep cik fileno accession filingdate finaldispdate finaldc subtype
+gen yearmo=202007 if substr(filingd,1,7)=="2020-07"
+replace yearmo=202008 if substr(filingd,1,7)=="2020-08"
+replace yearmo=202009 if substr(filingd,1,7)=="2020-09"
+drop finaldisp 
+tab sub
+joinby accessionno using stub, unmatched(master)
+ren totaloffering totaloffering_xml
+drop _m
+gen accession2=subinstr(accessionno,"-","",.)
+tostring cik, force replace
+gen index_url="https://www.sec.gov/Archives/edgar/data/"+cik+"/"+accession2+"/"+accessionno+"-index.htm" 
+drop accession2
+save _2020Q3_newfilings, replace
+
+erase stub.dta
+
+use _2020Q3_newfilings, clear
+append using _2020Q3_newqualif
+drop if totaloffering_checked<.
+sort accession
+by accession: keep if _n==1
+tab sub
+drop if sub=="1-A POS"
+keep cik accession index_url totaloffering_xml sub
+export excel using unique_2020q3_regA_filed.xlsx, sheet(tocheck, replace) firstrow(var)
+
+import excel using unique_2020q3_regA_filed.xlsx, clear firstrow
+keep totaloffering_checked accessionno cik
+save stub2, replace
+
+
+use _2020Q3_newfilings, clear
+gen initial_filed=1 if sub=="1-A"
+gen amend_filed=1 if sub=="1-A/A" | sub=="1-A POS"
+*consolidate filings of the same type made on the same date as likely duplicates 
+gen filingdate_=mdy(real(substr(filingdate,6,2)), real(substr(filingdate,9,2)), real(substr(filingdate,1,4)))
+sort cik filingdate_ initial_filed accessionno
+by cik filingdate_ initial_filed: gen n=_N
+by cik filingdate_: keep if _n==_N
+drop yearmo
+gen yearmo=year(filingdate_)*100+month(filingdate_)
+collapse(sum) initial_filed amend_filed, by(yearmo)
+label var initial_filed "# of new Form 1-A filings"
+label var amend_filed "# of amended Form 1-A filings"
+save tmp_1, replace
+
+*number of new and pqa qualifications, not excluding subsequent withdrawals
+use _2020Q3_newqualif, clear
+count
+gen initial_qual=1 if sub!="1-A POS"
+gen pqa_qual=1 if sub=="1-A POS"
+drop yearmo
+gen finaldispdate_=mdy(real(substr(finaldispdate,6,2)), real(substr(finaldispdate,9,2)), real(substr(finaldispdate,1,4)))
+gen yearmo=year(finaldispdate_)*100+month(finaldispdate_)
+*consolidate all filings qualified on the same date as likely pertaining to same offering (e.g. initial and amendments to Form 1-A)
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+by cik finaldispdate_: keep if _n==_N
+collapse(sum) initial_qual pqa_qual, by(yearmo)
+label var initial_qual "# of new qualifications of Form 1-A filings (ex. PQAs)"
+label var pqa_qual "# of PQAs qualifications of Form 1-A filings"
+save tmp_2, replace
+
+
+*amount sought in new filings, not excluding subsequent withdrawals and abandonments
+use _2020Q3_newfilings, clear
+gen initial_filed=1 if sub=="1-A"
+keep if initial_filed==1
+count
+drop yearmo
+gen filingdate_=mdy(real(substr(filingdate,6,2)), real(substr(filingdate,9,2)), real(substr(filingdate,1,4)))
+gen yearmo=year(filingdate_)*100+month(filingdate_)
+tab yearm
+joinby cik accessionno using stub2, unmatched(master)
+gen totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+tab totaloffering_checked if totaloffering==.
+*drop if missing
+keep if totaloffering<.
+*consolidate filings made on the same date as likely duplicates
+sort cik filingdate_ accessionno
+by cik filingdate_: gen n=_N
+by cik filingdate_: keep if _n==_N
+*convert to mln
+replace totaloffering=totaloffering/1000000
+foreach k in sum mean median {
+egen newfile_`k'=`k'(totaloffering), by(yearmo)
+}
+collapse newfile_*, by(yearmo)
+label var newfile_sum "Aggregate offer amounts in new Form 1-A filings (incl. withdrawn)"
+label var newfile_mean "Mean offer amounts in new Form 1-A filings (incl. withdrawn)"
+label var newfile_median "Median offer amounts in new Form 1-A filings (incl. withdrawn)"
+save tmp_3, replace
+
+
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+use _2020Q3_newqualif, clear
+drop if sub=="1-A POS"
+count
+sum
+ren totaloffering_checked totaloffering_checked_
+joinby accessionno using stub2, unmatched(master)
+tab _m
+replace totaloffering_checked_=real(totaloffering_checked) if real(totaloffering_checked)<.
+list sub cik acc totaloffering* if totaloffering_checked_==.
+drop totaloffering_xml totaloffering_checked
+*drop if missing (e.g. if amendment is only filed to provide consent opinion)
+keep if totaloffering_checked_<.
+*consolidate filings qualified on the same date
+gen finaldispdate_=mdy(real(substr(finaldispdate,6,2)), real(substr(finaldispdate,9,2)), real(substr(finaldispdate,1,4)))
+gen filingdate_=mdy(real(substr(filingdate,6,2)), real(substr(filingdate,9,2)), real(substr(filingdate,1,4)))
+format %td finaldispdate_
+drop yearmo
+gen yearmo=year(finaldispdate_)*100+month(finaldispdate_)
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering_checked_ if n>1
+by cik finaldispdate_: keep if _n==_N
+save temp, replace
+*convert to mln
+replace totaloffering=totaloffering/1000000
+foreach k in sum mean median {
+egen newqual_`k'=`k'(totaloffering), by(yearmo)
+}
+collapse newqual_*, by(yearmo)
+label var newqual_sum "Aggregate offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+label var newqual_mean "Mean offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+label var newqual_median "Median offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+save tmp_4, replace
+
+use tmp_1, clear
+joinby yearmo using tmp_2, unmatched(master)
+tab _m
+drop _m
+joinby yearmo using tmp_3, unmatched(master)
+tab _m
+drop _m
+joinby yearmo using tmp_4, unmatched(master)
+tab _m
+drop _m
+sort yearmo
+list
+export excel using OASB_2020Report_RegA_addon.xlsx, sheet(covidq3, replace) firstrow(varl)
+
+
+erase tmp_1.dta
+erase tmp_2.dta
+erase tmp_3.dta
+erase tmp_4.dta
+erase stub.dta
+
+///
+///COVID industry data for RegA
+///new industry group definitions from SIC codes for greater comparability with Form D groupings 
+program industrygroup2
+gen indgroup=""
+replace indgroup="Agriculture" if sic<=199 & sic>=100 | sic<=299 & sic>=200 | sic<=799 & sic>=700 | sic==2048
+replace indgroup="Banking and Financial Services" if sic>=6000 & sic<=6000 | sic>=6010 & sic<=6019 | sic>=6020 & sic<=6020 | sic>=6021 & sic<=6021 | sic>=6022 & sic<=6022 | sic>=6023 & sic<=6024 | sic>=6025 & sic<=6025 | sic>=6026 & sic<=6026 | sic>=6027 & sic<=6027 | sic>=6028 & sic<=6029 | sic>=6030 & sic<=6036 | sic>=6040 & sic<=6059 | sic>=6060 & sic<=6062 | sic>=6080 & sic<=6082 | sic>=6090 & sic<=6099 | sic>=6100 & sic<=6100 | sic>=6110 & sic<=6111 | sic>=6112 & sic<=6113 | sic>=6120 & sic<=6129 | sic>=6130 & sic<=6139 | sic>=6140 & sic<=6149 | sic>=6150 & sic<=6159 | sic>=6160 & sic<=6169 | sic>=6170 & sic<=6179 | sic>=6190 & sic<=6199 | sic>=6300 & sic<=6300 | sic>=6310 & sic<=6319 | sic>=6330 & sic<=6331 | sic>=6350 & sic<=6351 | sic>=6360 & sic<=6361 | sic>=6370 & sic<=6379 | sic>=6390 & sic<=6399 | sic>=6400 & sic<=6411 | sic>=6200 & sic<=6299 | sic>=6700 & sic<=6700 | sic>=6710 & sic<=6719 | sic>=6720 & sic<=6722 | sic>=6723 & sic<=6723 | sic>=6724 & sic<=6724 | sic>=6725 & sic<=6725 | sic>=6726 & sic<=6726 | sic>=6730 & sic<=6733 | sic>=6740 & sic<=6779 | sic>=6790 & sic<=6791 | sic>=6792 & sic<=6792 | sic>=6793 & sic<=6793 | sic>=6794 & sic<=6794 | sic>=6795 & sic<=6795 | sic==6797 | sic>=6799 & sic<=6799
+replace indgroup="Business Services" if int(sic/100)==42 | int(sic/10) >= 441 & int(sic/10)<=444 | int(sic/10)>=473 & int(sic/10)<=478 | int(sic/10)>=494 & int(sic/10)<=497 | sic>=2750 & sic<=2759 | sic>=3993 & sic<=3993 | sic>=7218 & sic<=7218 | sic>=7300 & sic<=7300 | sic>=7310 & sic<=7319 | sic>=7320 & sic<=7329 | sic>=7330 & sic<=7339 | sic>=7340 & sic<=7342 | sic>=7349 & sic<=7349 | sic>=7350 & sic<=7351 | sic>=7353 & sic<=7353 | sic>=7359 & sic<=7359 | sic>=7360 & sic<=7369 | sic>=7380 & sic<=7380 | sic>=7381 & sic<=7382 | sic>=7383 & sic<=7383 | sic>=7384 & sic<=7384 | sic>=7385 & sic<=7385 | sic>=7389 & sic<=7390 | sic>=7391 & sic<=7391 | sic>=7392 & sic<=7392 | sic>=7393 & sic<=7393 | sic>=7394 & sic<=7394 | sic>=7396 & sic<=7396 | sic>=7397 & sic<=7397 | sic>=7399 & sic<=7399 | sic==7513 | sic>=7519 & sic<=7519 | sic>=8700 & sic<=8700 | sic>=8710 & sic<=8713 | sic>=8720 & sic<=8721 | sic>=8730 & sic<=8734 | sic>=8740 & sic<=8748 | sic>=8900 & sic<=8910 | sic>=8911 & sic<=8911 | sic>=8920 & sic<=8999 
+replace indgroup="Energy" if int(sic/10)==461 | int(sic/10)==517 | sic>=1200 & sic<=1299 | sic>=1300 & sic<=1300 | sic>=1310 & sic<=1319 | sic>=1320 & sic<=1329 | sic>=1330 & sic<=1339 | sic>=1370 & sic<=1379 | sic>=1380 & sic<=1380 | sic>=1381 & sic<=1381 | sic>=1382 & sic<=1382 | sic>=1389 & sic<=1389 | sic>=2900 & sic<=2912 | sic>=2990 & sic<=2999 | sic>=4900 & sic<=4900 | sic>=4910 & sic<=4911 | sic>=4920 & sic<=4922 | sic>=4923 & sic<=4923 | sic>=4924 & sic<=4925 | sic>=4930 & sic<=4931 | sic>=4932 & sic<=4932 | sic>=4939 & sic<=4939 
+replace indgroup="Health Care" if int(sic/10)==512 | sic==5047 | sic==5048 | int(sic/10)==283 | sic>=8000 & sic<=8099 | sic>=3693 & sic<=3693 | sic>=3840 & sic<=3849 | sic>=3850 & sic<=3851 | sic>=2830 & sic<=2830 | sic>=2831 & sic<=2831 | sic>=2833 & sic<=2833 | sic>=2834 & sic<=2834 | sic>=2835 & sic<=2835 | sic>=2836 & sic<=2836 | sic>=6320 & sic<=6329 | sic>=7352 & sic<=7352 
+replace indgroup="Real Estate" if sic>=6500 & sic<=6500 | sic>=6510 & sic<=6510 | sic>=6512 & sic<=6512 | sic>=6513 & sic<=6513 | sic>=6514 & sic<=6514 | sic>=6515 & sic<=6515 | sic>=6517 & sic<=6519 | sic>=6520 & sic<=6529 | sic>=6530 & sic<=6531 | sic>=6532 & sic<=6532 | sic>=6540 & sic<=6541 | sic>=6550 & sic<=6553 | sic>=6590 & sic<=6599 | sic>=6610 & sic<=6611 | sic>=1500 & sic<=1511 | sic>=1520 & sic<=1529 | sic>=1530 & sic<=1539 | sic>=1540 & sic<=1549 | sic>=1600 & sic<=1699 | sic>=1700 & sic<=1799 | sic==6798
+replace indgroup="Technology" if sic==5043 | sic==5044 | sic==5045 | sic==5049 | sic==5063 | sic==5064 | sic==5065 | sic>=3570 & sic<=3579 | sic>=3622 & sic<=3622 | sic>=3661 & sic<=3661 | sic>=3662 & sic<=3662 | sic>=3663 & sic<=3663 | sic>=3664 & sic<=3664 | sic>=3665 & sic<=3665 | sic>=3666 & sic<=3666 | sic>=3669 & sic<=3669 | sic>=3670 & sic<=3679 | sic>=3680 & sic<=3680 | sic>=3681 & sic<=3681 | sic>=3682 & sic<=3682 | sic>=3683 & sic<=3683 | sic>=3684 & sic<=3684 | sic>=3685 & sic<=3685 | sic>=3686 & sic<=3686 | sic>=3687 & sic<=3687 | sic>=3688 & sic<=3688 | sic>=3689 & sic<=3689 | sic>=3810 & sic<=3810 | sic>=3811 & sic<=3811 | sic>=3812 & sic<=3812 | sic>=3820 & sic<=3820 | sic>=3821 & sic<=3821 | sic>=3822 & sic<=3822 | sic>=3823 & sic<=3823 | sic>=3824 & sic<=3824 | sic>=3825 & sic<=3825 | sic>=3826 & sic<=3826 | sic>=3827 & sic<=3827 | sic>=3829 & sic<=3829 | sic>=3830 & sic<=3839 | sic>=4800 & sic<=4800 | sic>=4810 & sic<=4813 | sic>=4820 & sic<=4822 | sic>=4830 & sic<=4839 | sic>=4840 & sic<=4841 | sic>=4880 & sic<=4889 | sic>=4890 & sic<=4890 | sic>=4891 & sic<=4891 | sic>=4892 & sic<=4892 | sic>=4899 & sic<=4899 | sic>=7370 & sic<=7372 | sic>=7373 & sic<=7373 | sic>=7374 & sic<=7374 | sic>=7375 & sic<=7375 | sic>=7376 & sic<=7376 | sic>=7377 & sic<=7377 | sic>=7378 & sic<=7378 | sic>=7379 & sic<=7379 
+replace indgroup="Restaurants" if int(sic/10)==581 | sic==5812 | sic==5813
+replace indgroup="Retailing" if sic>=5200 & sic<=5200 | sic>=5210 & sic<=5219 | sic>=5220 & sic<=5229 | sic>=5230 & sic<=5231 | sic>=5250 & sic<=5251 | sic>=5260 & sic<=5261 | sic>=5270 & sic<=5271 | sic>=5300 & sic<=5300 | sic>=5310 & sic<=5311 | sic>=5320 & sic<=5320 | sic>=5330 & sic<=5331 | sic>=5334 & sic<=5334 | sic>=5340 & sic<=5349 | sic>=5390 & sic<=5399 | sic>=5400 & sic<=5400 | sic>=5410 & sic<=5411 | sic>=5412 & sic<=5412 | sic>=5420 & sic<=5429 | sic>=5430 & sic<=5439 | sic>=5440 & sic<=5449 | sic>=5450 & sic<=5459 | sic>=5460 & sic<=5469 | sic>=5490 & sic<=5499 | sic>=5500 & sic<=5500 | sic>=5510 & sic<=5529 | sic>=5530 & sic<=5539 | sic>=5540 & sic<=5549 | sic>=5550& sic<=5559 | sic>=5560 & sic<=5569 | sic>=5570 & sic<=5579 | sic>=5590 & sic<=5599 | sic>=5600 & sic<=5699 | sic>=5700 & sic<=5700 | sic>=5710 & sic<=5719 | sic>=5720 & sic<=5722 | sic>=5730 & sic<=5733 | sic>=5734 & sic<=5734 | sic>=5735 & sic<=5735 | sic>=5736 & sic<=5736 | sic>=5750& sic<=5799 | sic>=5900& sic<=5900 | sic>=5910 & sic<=5912 | sic>=5920 & sic<=5929 | sic>=5930 & sic<=5932 | sic>=5940 & sic<=5940 | sic>=5941 & sic<=5941 | sic>=5942 & sic<=5942 | sic>=5943 & sic<=5943 | sic>=5944 & sic<=5944 | sic>=5945 & sic<=5945 | sic>=5946 & sic<=5946 | sic>=5947 & sic<=5947 | sic>=5948 & sic<=5948 | sic>=5949 & sic<=5949 | sic>=5950 & sic<=5959 | sic>=5960 & sic<=5969 | sic>=5970 & sic<=5979 | sic>=5980 & sic<=5989 | sic>=5990 & sic<=5990 | sic>=5992 & sic<=5992 | sic>=5993 & sic<=5993 | sic>=5994 & sic<=5994 | sic>=5995 & sic<=5995 | sic>=5999 & sic<=5999 
+replace indgroup="Manufacturing" if indgroup=="" & sic>=2000 & sic<=3999
+replace indgroup="Travel" if int(sic/100)==70 | int(sic/100)==40 | int(sic/100)==41 | sic==4011 | sic==4013 | sic==4111 | sic==4119 | sic==4121 | sic==4131 | sic==4141 | sic==4142 | sic==4173 | sic==4481 | sic==4482 | sic==4489 | sic==4512 | sic==4513 | sic==4522 | sic==4581 | sic==4724 | sic==4725 | sic==4729 | sic==7514
+replace indgroup="Other" if indgroup=="" & sic<.
+replace indgroup="Other" if indgroup=="Agriculture" | indgroup=="Business Services" | indgroup=="Restaurants" | indgroup=="Retailing" | indgroup=="Travel"
+end
+///2020Q3 data on SICs
+unzipfile 2020Q3_rega.zip, replace
+import delimited using 2020Q3_rega\REG_A_EMPLOYEES_INFO.TSV, clear
+ren accession_number accessionno
+ren sic sic
+keep accessionno sic
+destring sic, force replace
+replace accessionno=ustrtrim(accessionno)
+save stubsic, replace
+
+use 2020H1\files\_reg_a_combined, clear
+keep accessionno sic
+ren sic sic
+destring sic, force replace
+append using stubsic
+save stubsic, replace
+
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+*by industry for the first 9 months of 2020 and 2019
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if finaldispdate_<=mdy(12,30,2019) & finaldispdate_>=mdy(1,1,2019) | finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(1,1,2020)
+keep if qualif==1
+drop if subm=="1-A POS"
+drop _m
+joinby cik fileno accessionno using 2020H1\files\OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab subm
+replace totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+*hand-check amounts sought in the abandoned/withdrawn new filings not in prior report
+list cik accession datefiled_ totaloffering totaloffering_checked if real(totaloffering_checked)==. | real(totaloffering_checked)==0
+replace totaloffering=. if totaloffering_checked=="n.a."
+replace totaloffering=5000000 if accession=="000121390019015358"
+replace totaloffering=3000000 if accession=="000152013819000350" 
+replace totaloffering=3000000 if accession=="000152013819000435"
+replace totaloffering=. if accession=="000106299319001636"
+replace totaloffering=. if accession=="000106299319001809"
+list cik accession datefiled_ totaloffering totaloffering_checked if finaldispdate_<=mdy(12,30,2019) & finaldispdate_>=mdy(7,1,2019) & real(totaloffering_checked)==. | real(totaloffering_checked)==0
+*drop if missing (e.g. if amendment is only filed to provide consent opinion)
+keep if totaloffering<.
+des
+keep if qualif==1
+ren totaloffering totaloffering_checked_
+keep accessionno cik finaldispdate_ filingdate_ totaloffering_checked_
+///add 2020Q3
+append using temp
+keep accessionno cik finaldispdate_ filingdate_ totaloffering_checked_
+*consolidate filings qualified on the same date
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering if n>1
+by cik finaldispdate_: keep if _n==_N
+gen period="2020_first9mo" if finaldispdate_<=mdy(9,30,2020) & finaldispdate_>=mdy(1,1,2020)
+replace period="2019_first9mo" if finaldispdate_<=mdy(9,30,2019) & finaldispdate_>=mdy(1,1,2019)
+drop if period==""
+keep if totaloffering_checked_<.
+count
+*convert to mln
+replace totaloffering=totaloffering/1000000
+*merge SIC
+joinby accessionno using stubsic, unmatched(master)
+tab _m
+list if sic==.
+replace sic=4812 if accessionno=="0001623541-17-000007"
+replace sic=6798 if accessionno=="0001104659-20-005648"
+replace sic=6199 if accessionno=="0001628279-19-000256"
+replace sic=3841 if accessionno=="0001104659-20-006368"
+replace sic=5990 if accessionno=="0001213900-20-006099"
+industrygroup2
+collapse(sum) totaloffering, by(period indgroup)
+ren totaloffering newqual_sum
+label var newqual_sum "Aggregate offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+
+export excel using OASB_2020Report_RegA_addon2.xlsx, sheet(covidsic, replace) firstrow(var)
+
+*breakdown of "other" category
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+*by industry for the first 9 months of 2020 and 2019
+*amount sought in new qualifications (ex. PQAs), not excluding subsequent withdrawals
+use 2020H1\files\list_filings_, clear
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+keep if finaldispdate_<=mdy(12,30,2019) & finaldispdate_>=mdy(1,1,2019) | finaldispdate_<=mdy(6,30,2020) & finaldispdate_>=mdy(1,1,2020)
+keep if qualif==1
+drop if subm=="1-A POS"
+drop _m
+joinby cik fileno accessionno using 2020H1\files\OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab subm
+replace totaloffering=real(totaloffering_checked) if real(totaloffering_checked)<.
+*hand-check amounts sought in the abandoned/withdrawn new filings not in prior report
+list cik accession datefiled_ totaloffering totaloffering_checked if real(totaloffering_checked)==. | real(totaloffering_checked)==0
+replace totaloffering=. if totaloffering_checked=="n.a."
+replace totaloffering=5000000 if accession=="000121390019015358"
+replace totaloffering=3000000 if accession=="000152013819000350" 
+replace totaloffering=3000000 if accession=="000152013819000435"
+replace totaloffering=. if accession=="000106299319001636"
+replace totaloffering=. if accession=="000106299319001809"
+list cik accession datefiled_ totaloffering totaloffering_checked if finaldispdate_<=mdy(12,30,2019) & finaldispdate_>=mdy(7,1,2019) & real(totaloffering_checked)==. | real(totaloffering_checked)==0
+*drop if missing (e.g. if amendment is only filed to provide consent opinion)
+keep if totaloffering<.
+des
+keep if qualif==1
+ren totaloffering totaloffering_checked_
+keep accessionno cik finaldispdate_ filingdate_ totaloffering_checked_
+///add 2020Q3
+append using temp
+keep accessionno cik finaldispdate_ filingdate_ totaloffering_checked_
+*consolidate filings qualified on the same date
+sort cik finaldispdate_ accessionno
+by cik finaldispdate_: gen n=_N
+list cik accession finaldispdate_ totaloffering if n>1
+by cik finaldispdate_: keep if _n==_N
+gen period="2020_first9mo" if finaldispdate_<=mdy(9,30,2020) & finaldispdate_>=mdy(1,1,2020)
+replace period="2019_first9mo" if finaldispdate_<=mdy(9,30,2019) & finaldispdate_>=mdy(1,1,2019)
+drop if period==""
+keep if totaloffering_checked_<.
+count
+*convert to mln
+replace totaloffering=totaloffering/1000000
+*merge SIC
+joinby accessionno using stubsic, unmatched(master)
+tab _m
+list if sic==.
+replace sic=4812 if accessionno=="0001623541-17-000007"
+replace sic=6798 if accessionno=="0001104659-20-005648"
+replace sic=6199 if accessionno=="0001628279-19-000256"
+replace sic=3841 if accessionno=="0001104659-20-006368"
+replace sic=5990 if accessionno=="0001213900-20-006099"
+industrygroup2
+keep if indgroup=="Other"
+gen sic2=int(sic/100)
+list if sic2==1
+list if sic2==7
+collapse(sum) totaloffering, by(period sic2)
+ren totaloffering newqual_sum
+label var newqual_sum "Aggregate offer amounts in newly qualified Reg A filings (incl. withdrawn)"
+export excel using OASB_2020Report_RegA_addon2.xlsx, sheet(covidsic_other, replace) firstrow(var)
