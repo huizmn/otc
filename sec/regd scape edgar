@@ -1,0 +1,70 @@
+# Generic Edgar Scraper
+
+# Assign what filing text you want to search for at bottom.
+# e.g. filing = "10-K" or filing = "10" for Ks and Qs
+# walkEdgar() finds hits from the main indices
+# writeEdgar() downloads the hits to disk
+
+import  os, glob, time
+from urllib2 import urlopen
+
+
+def writeEdgar(path, ind):
+    urlpath = edgarUrlBase + path
+    filename = path.split('/')[-1]
+    localfilepath = outFileBase + ind + '/'  
+    # if the file does not already exist, download it
+    if not os.path.isdir(localfilepath):
+        os.makedirs(localfilepath)
+    print(localfilepath + filename)
+    with open(localfilepath + filename, 'wb') as outFile:
+        with urlopen(urlpath) as f:
+            outFile.write(f.read())
+
+def walkEdgar(filing):
+    indices = [edgarUrlBase + indexUrlDir + year + '/' + qtr + '/' + indexname
+               for year in years
+               for qtr in quarters]
+    for index in indices:
+        while True:
+            try:
+                with urlopen(index) as f:
+                    print('found file')
+                    for line in f:
+                        if '|' in line:
+                            data = line.split('|')
+                            formtype = data[2]
+                            path = data[4].strip()
+                            if filing == formtype:
+                                ind = index.split('/')
+                                ind = "/".join(ind[-3:-1])
+                                yield path, ind
+                break
+            except:
+                print('sleeping')
+                time.sleep(3)
+
+#Clear previous files
+files = glob.glob('J:\\Oea\\GoetzR\\OCF\\python\\2016\\QTR3\\*')
+for f in files:
+    os.remove(f)
+
+#Set all the program variables
+edgarUrlBase = 'ftp://ftp.sec.gov/'
+indexUrlDir = 'edgar/full-index/'
+outFileBase = 'J:/Oea/GoetzR/OCF/python/FormD/2016/'
+years = ['2016']
+quarters = ['QTR3']
+indexname = "master.idx"
+if not os.path.isdir(outFileBase):
+   os.makedirs(outFileBase)
+filing = "D"
+#End set all the program variables
+
+#Main program loop
+#Whenever walkEdgar() gets a hit, yields a tuple for writeEdgar()
+print("Set to search for: " + filing)
+print("Years to search for: " + str(years))
+print("Quarters to search for: " + str(quarters))
+for path, index in walkEdgar(filing):
+    writeEdgar(path, index)
