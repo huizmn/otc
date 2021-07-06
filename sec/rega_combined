@@ -1,0 +1,1345 @@
++
+global prior f:\reg_a\20191231
+global new f:\reg_a\20200630
+cd f:\reg_a
+mkdir $new
+cd $new
+global cutoffdate=mdy(6,30,2020)
+global startofnew=mdy(12,31,2019)
+global reportdate=20200630
+
+*RW - sometimes intended as 1-A-W, check EDGAR for forms RW filed from 6/19/2015 -
+import excel using "edgarlist_1-A_filed_RW_incr.xls", firstrow case(lower) clear
+destring cik, force replace
+tostring cik, force replace
+*convert dates to Stata date format
+gen filingdate_=mdy( real(substr(filingdate,6,2)), real(substr(filingdate,9,2)), real(substr(filingdate,1,4)))
+*check that filing date is within range; dorp if out of range
+drop if filingdate_>$cutoffdate
+keep cik
+sort cik
+by cik: keep if _n==1
+save RWs_incr, replace
+
+*check EDGAR for forms 1-A* filed from 6/19/2015 -
+import excel using "edgarlist_1-A_filed.xls", firstrow case(lower) clear
+*formatting steps
+drop substatus period rev interimd* ep coreg cc dcn error doccnt protocol hardship
+*destring CIK, suppress blanks in fileno
+destring cik, force replace
+tostring cik, force replace
+replace fileno=subinstr(fileno," ","",.)
+*convert dates to Stata date format
+gen filingdate_=mdy( real(substr(filingdate,6,2)), real(substr(filingdate,9,2)), real(substr(filingdate,1,4)))
+gen finaldispdate_=mdy( real(substr(finaldispdate,6,2)), real(substr(finaldispdate,9,2)), real(substr(finaldispdate,1,4)))
+*check that filing date is within range; dorp if out of range
+drop if filingdate_>$cutoffdate | filingdate_<mdy(6,19,2015)
+*check that finaldispdate is within range; reset to missing if out of range
+replace finaldispdate="" if finaldispdate_>$cutoffdate
+replace finaldispdate_=. if finaldispdate_>$cutoffdate | finaldispdate_<mdy(6,19,2015)
+replace finaldc="" if finaldispdate_==.
+*flag qualified filings
+gen qualif=1 if substr(finaldc,1,1)=="E"
+*flag separately post-qualification amendments
+gen pos=1 if subtype=="1-A POS"
+///create a withdrawal flag
+*pre-qualification withdrawals
+gen d=1 if finaldc=="WD" & subtype=="1-A" | finaldc=="WD" & subtype=="1-A/A" | finaldc=="WD" & subtype=="1-A POS"
+replace d=0 if finaldc!="WD" & subtype=="1-A" | finaldc!="WD" & subtype=="1-A/A" | finaldc!="WD" & subtype=="1-A POS"
+egen dd_w=mean(d), by(cik fileno)
+drop d
+*abandoned
+gen d=1 if finaldc=="AB" & subtype=="1-A" | finaldc=="AB" & subtype=="1-A/A" | finaldc=="AB" & subtype=="1-A POS" | finaldc=="AC" & subtype=="1-A" | finaldc=="AC" & subtype=="1-A/A" | finaldc=="AC" & subtype=="1-A POS"
+replace d=0 if finaldc!="AB" & finaldc!="AC" & subtype=="1-A" | finaldc!="AB" & finaldc!="AC" & subtype=="1-A/A" | finaldc!="AB" & finaldc!="AC" &  subtype=="1-A POS"
+egen dd_ab=mean(d), by(cik fileno)
+drop d
+*Bulletproof brands [ABANDONED RECEIPT RECEIVED 2017.03.06	*https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-17-007354]
+*check any remaining filenos that had a 1-A-W and that have not been qualified, for possible missed WD/AB flags
+*post-qualification withdrawals
+*suppress 1-A-Ws either if it was a withdrawal of request for acceleration, or a a withdrawal of a duplicate accession already dropped]
+		///referencing incorrect filing as new form instead of amendments; the new form itself had already been dropped
+		///blank 1-A-Ws
+foreach k in 0001445866-19-000770 0001646269-18-000007 0001144204-18-014734 0001144204-18-014736 0001144204-18-015974 0001144204-18-015975 0001615774-18-002131 0001493152-16-008671 0001144204-16-138179 0001587999-16-000018 0001010549-16-000770 0001010549-16-000729 0001642079-16-000016 0001606811-15-000018 0001606811-15-000019 0001530196-15-000006 0001530196-15-000004 0001354488-16-006095 0001657737-15-000005 0001615923-15-000006 0001592766-15-000004 0001681343-16-000006 0001010549-16-000772 {
+drop if accession=="`k'" & strpos(subtype,"1-A-W")>0
+}
+*Phoenix Realty
+foreach k in 0001687263-16-000003 0001687263-16-000005 0001687263-16-000008 0001687263-16-000009 0001687263-17-000008 {
+drop if accession=="`k'" 
+}
+
+*pre-qualification withdrawals not flagged as WD 
+*[XY - the findables incorrect form type 0001193125-17-297611, later refiled 1-A POS] [Dakota REIT - incorrect form type 0001104659-17-060430, filed as 253G2] [Stock Market Bar and Grill, CF Fund II - duplicate, Samba Brazilian withdrew - both fileno's; Sensory Performance Technology - seems to have withdrawn the offerings for fileno's 024-10603 and 024-10604]
+*Stone BankcShares 0001718873-17-000006 - duplicate
+*Tuscan Gardens Secured Income Funds
+*Golden Pacific Homes 0001658959-16-000011  0001658959-17-000002
+*Gulf Chronoic Care 0001615774-19-005108
+*PunchFlix 0000806171-19-000042
+*Med-X PQA misfiled 0001477932-19-003121
+*First Jersey Cannabis 0001376474-18-000155 0001376474-18-000135
+*Emerald Health PQA misfiled 0001213900-19-008902
+*Contact Gold PQA misfiled 0001062993-19-002274
+*Delhi Bank PQA misfiled 0001213900-19-004466
+*Blockstack Token offering 024-10986
+*AW Blockchain Mining
+*ERC homebuilders 2 0001144204-19-041179 0001144204-19-035281 0001144204-19-031655
+*Acquasalut 024-11082 024-11097 duplicate
+*RAD Diversified REIT 0001721469-19-000013 duplicate
+*Kibush Capital  0001493152-19-008526 0001493152-19-010900
+*Nexus Energy  0001213900-19-012236
+*Seed Equity 0001743305-19-000009 0001743305-19-000010 duplicate
+*Automation Finance  0001213900-19-017240 duplicate amendment
+*Techsoup Global 0001213900-19-015111  0001213900-18-013820 extra amendment
+*EHedge 0001766214-19-000015
+*Groundfloor extra amendment 0001144204-18-032746
+*Legion Capital Corp 0001213900-18-000895 incorrect fileno
+*Amarantus Bioscience 0001213900-20-000662 duplicate amendment
+*GolfSuites 2 0001144204-19-040644 0001144204-19-035537 0001144204-19-034533  pre-qualif withdrawal
+*GolfSuites 3 0001104659-19-074538 0001144204-19-040645 0001144204-19-035539 0001144204-19-034536
+*GolfSuites 4 0001144204-19-040648 0001144204-19-035541 0001144204-19-034541 pre-qualif withdrawal
+*GolfSuites 5 0001144204-19-040650 0001144204-19-035546 0001144204-19-034545 pre-qualif withdrawal
+*GolfSuites 6 0001144204-19-040653 0001144204-19-035548 0001144204-19-034549 pre-qualif withdrawal
+*Northridge 0001376474-20-000005 0001376474-19-000271 pre-qualif withdrawal
+*Dragonize Studio's & Institute  0001709247-20-000002 pre-qualif withdrawal
+*Commonwealth Thoroughbreds 0001437749-20-007246 omit one of the amendments
+*Bangi Inc 0001477932-19-005622 pre-qualif withdrawal
+*Infinex Ventures 0001076310-20-000004 pre-qualif withdrawal
+*Cardone Equity Fund IX 0001477932-20-001372 0001477932-20-000394 pre-qualif withdrawal
+*Nocera 0001065949-19-000150 pre-qualif withdrawal
+*American Condor Resources wrong amendment type 0001754259-20-000002 0001754259-20-000004
+*EmpireBIT 0001757108-20-000001 0001757108-19-000002 pre-qualif withdrawal
+*Legacy Teak 0001766280-20-000003 RW pre-qualif withdrawal of duplicate filing
+foreach k in 0001065949-19-000150 0001076310-20-000004 0001144204-19-040653 0001144204-19-035548 0001144204-19-034549 0001144204-19-040644 0001144204-19-035537 0001144204-19-034533 0001766280-20-000003 0001757108-20-000001 0001757108-19-000002 0001754259-20-000002 0001754259-20-000004 0001477932-20-001372 0001477932-20-000394 0001477932-19-005622 0001437749-20-007246 0001709247-20-000002 0001376474-20-000005 0001376474-19-000271 0001104659-19-074538 0001144204-19-040645 0001144204-19-035539 0001144204-19-034536 0001144204-19-040648 0001144204-19-035541 0001144204-19-034541 0001144204-19-040650 0001144204-19-035546 0001144204-19-034545  0001213900-20-000662 0001213900-18-000895 0001144204-18-032746 0001766214-19-000015 0001213900-18-013820 0001213900-19-015111 0001213900-19-017240 0001743305-19-000009 0001743305-19-000010 0001213900-19-012236 0001493152-19-008526 0001493152-19-010900 0001721469-19-000013 0001144204-19-041179 0001144204-19-035281 0001144204-19-031655 0001477932-19-001651 0001477932-19-000272 0001104659-19-029828 0001104659-19-020748 0001213900-19-004466 0001062993-19-002274 0001213900-19-008902 0001376474-18-000155 0001376474-18-000135 0001477932-19-003121 0000806171-19-000042 0001615774-19-005108 0001658959-16-000011  0001658959-17-000002 0001645471-16-000011 0001645471-15-000010 0001645471-15-000009 0001645471-15-000001 0001193125-17-297611 0001592766-15-000005 0001592766-16-000008 0001592766-16-000010 0001615774-16-003801 0001681524-16-000007 0001682391-16-000002 0001104659-17-060430 0001718873-17-000006 {
+replace finaldc="WD" if dd_w<1 & accession=="`k'"
+}
+replace finaldc="WD" if fileno=="024-11082" | fileno=="024-11097"
+*Flag post-qualification withdrawals but not flagged as WD 
+*ralliBox 0001647636-15-000001 0001647636-15-000003 0001647636-15-000005 0001647636-15-000007
+*Blue Marble Energy Corp 0001144204-17-007548 0001144204-17-00927
+*XREAL (RW) 0001477932-16-010161 0001477932-16-010901 0001477932-16-012308
+*WayBetter Inc 0001644600-16-000068	0001644600-16-000091	0001644600-16-000096	0001644600-16-000099	0001644600-16-000101	
+*Hamilton National Income Trust 0001144204-16-093513 0001144204-16-079930 0001144204-15-071953
+*Sun Dental 0001193125-15-390777 0001193125-15-337847 0001193125-15-311712
+*Alliance Freight Lines Inc 0001677092-16-000008 0001677092-16-000007 0001677092-16-000004 0001677092-16-000002 
+*WORTHPOINT 0001144204-17-002479  0001144204-16-141190 0001144204-16-136462
+*Rabble One 0001144204-17-029895  0001144204-17-027720 0001144204-17-021815
+*Stocosil Inc 0001415889-16-007133 0001415889-16-007382 0001415889-16-007514 0001654954-16-004922 0001415889-16-007597
+*UNATION inc. 0001644600-16-000182 0001644600-16-000139  0001644600-16-000187 0001144204-17-028349 0001144204-17-031655
+*Golden Pacific Homes 0001658959-16-000011 0001658959-17-000002 - RW
+*NY Residential REIT 0001387131-17-000991 0001387131-17-001866 0001387131-17-002236 0001387131-17-002372 0001387131-17-004229 0001387131-17-005612
+*PogoTec 0001213900-17-012233 0001213900-17-012871 0001213900-18-000311 0001213900-18-001255 0001213900-18-001376
+*Campagna Motors 0001144204-17-030964 0001144204-17-033485 0001144204-17-030964 0001144204-17-033485 0001144204-17-054591 0001144204-17-063013 0001144204-17-065568 
+*Aspen REIT 0001104659-17-067675 0001104659-17-068578 0001104659-17-074600 0001104659-18-001704 0001104659-18-003066 0001104659-18-008137 0001104659-18-009383 
+*TAHAWI AEROSPACE CORP
+*Institute for Wealth Holdings 0001193125-17-376767 0001193125-18-015840 0001193125-18-036459 0001193125-18-046775 0001193125-18-080991 
+*Glucose Biosensor 0001144204-18-060365 0001144204-18-058039 0001144204-18-054618
+*Phoenix Realty 0001687263-16-000003 0001687263-16-000005 0001687263-16-000008  0001687263-17-000008
+*Greenmo 0001623541-17-000004 0001623541-17-000007  0001213900-18-015533 0001213900-19-004701
+*Business Lines Corp 0001712534-17-000002  0001712534-17-000004 0001712534-17-000007 0001712534-17-000008 0001712534-17-000009  0001712534-18-000005
+*Teraphysics 0001658959-16-000001 0001658959-16-000003 0001658959-16-000005 0001658959-16-000007 0001658959-16-000008 0001658959-16-000010 0001658959-16-000017 0001658959-16-000018 0001658959-17-000001 0001658959-18-000003 0001658959-18-000004 0001658959-18-000005 0001658959-18-000007 0001658959-18-0000027 
+*PSI International 0001493152-17-010502 0001493152-17-013495 0001493152-17-014337  0001493152-17-015307
+*Moving iMage Technologies 0001144204-19-035421 
+*Platform Ventures Diversified Housing REIT 0001144204-18-050575 0001144204-18-049628 0001144204-18-048302 0001144204-18-035431 
+*YayYo - amendments 0001615774-18-002116  0001615774-18-002139 0001615774-18-002530
+*1847 Holdings 0001213900-19-021621 0001477932-19-005773 0001477932-19-005549 0001477932-19-005137
+*BRK 0001477932-20-001623 0001477932-19-005636 0001477932-19-005221 0001477932-19-005200 0001477932-19-004552 0001477932-19-003454 0001477932-19-003065 0001477932-19-001807 post-qualif withdrawal
+foreach k in 0001477932-20-001623 0001477932-19-005636 0001477932-19-005221 0001477932-19-005200 0001477932-19-004552 0001477932-19-003454 0001477932-19-003065 0001477932-19-001807 0001213900-19-021621 0001477932-19-005773 0001477932-19-005549 0001477932-19-005137 0001615774-18-002116  0001615774-18-002139 0001615774-18-002530 0001144204-18-050575 0001144204-18-049628 0001144204-18-048302 0001144204-18-035431 0001144204-19-035421 0001493152-17-010502 0001493152-17-013495 0001493152-17-014337  0001493152-17-015307 0001658959-16-000001 0001658959-16-000003 0001658959-16-000005 0001658959-16-000007 0001658959-16-000008 0001658959-16-000010 0001658959-16-000017 0001658959-16-000018 0001658959-17-000001 0001658959-18-000003 0001658959-18-000004 0001658959-18-000005 0001658959-18-000007 0001658959-18-0000027  0001712534-17-000002  0001712534-17-000004 0001712534-17-000007 0001712534-17-000008 0001712534-17-000009  0001712534-18-000005 0001623541-17-000004 0001623541-17-000007  0001213900-18-015533 0001213900-19-004701 0001687263-16-000003 0001687263-16-000005 0001687263-16-000008  0001687263-17-000008 0001144204-18-060365 0001144204-18-058039 0001144204-18-054618 0001193125-17-376767 0001193125-18-015840 0001193125-18-036459 0001193125-18-046775 0001193125-18-080991 0001144204-17-030964 0001144204-17-033485 0001644600-16-000182 0001686327-16-000001 0001686327-16-000004 0001686327-16-000006  0001686327-16-000007 0001686327-16-000008 0001686327-17-000001 0001686327-17-000004 0001686327-18-000001 0001686327-18-000002 0001104659-17-067675 0001104659-17-068578 0001104659-17-074600 0001104659-18-001704 0001104659-18-003066 0001104659-18-008137 0001104659-18-009383  0001213900-17-012233 0001213900-17-012871 0001213900-18-000311 0001213900-18-001255 0001213900-18-001376 0001387131-17-000991 0001387131-17-001866 0001387131-17-002236 0001387131-17-002372 0001387131-17-004229 0001387131-17-005612 0001658959-16-000011 0001658959-17-000002 0001644600-16-000139  0001644600-16-000187 0001144204-17-028349 0001144204-17-031655 0001144204-18-003839 0001144204-17-002479  0001144204-16-141190 0001144204-16-136462 0001647636-15-000001 0001647636-15-000003 0001647636-15-000005 0001647636-15-000007 0001144204-17-007548 0001144204-17-000927 0001477932-16-010161 0001477932-16-010901 0001477932-16-012308 0001644600-16-000068	0001644600-16-000091	0001644600-16-000096	0001644600-16-000099	0001644600-16-000101 0001144204-16-093513 0001144204-16-079930 0001144204-15-071953 0001193125-15-390777 0001193125-15-337847 0001193125-15-311712 0001677092-16-000008 0001677092-16-000007 0001677092-16-000004 0001677092-16-000002 0001144204-17-029895  0001144204-17-027720 0001144204-17-021815 0001415889-16-007133 0001415889-16-007382 0001415889-16-007514 0001654954-16-004922 0001415889-16-007597 {
+replace finaldc="E1-WD" if accession=="`k'"
+}
+///drop resolved 1-A-Ws
+foreach k in 0001477932-20-003583 0001757108-20-000003 0001757108-20-000002 0001754259-20-000005 0001754259-20-000003 0001065949-20-000072 0001065949-20-000055 0001477932-20-002364 0001076310-20-000005 0001213900-20-010892 0001477932-20-002337 0001437749-20-007969 0001709247-20-000003 0001376474-20-000051 0001104659-20-007255 0001104659-20-007251 0001104659-20-007250 0001104659-20-007253 0001104659-20-007254 0001213900-20-000719 0001144204-19-039121 0001144204-19-040686 0001766214-19-000019 0001213900-19-017027 0001144204-19-043462 0001493152-19-013721 0001376474-19-000229 0001213900-19-017957 0001213900-19-018423 0001743305-19-000012 0001213900-19-014116 0001493152-19-011331  0001712534-19-000001 0001721469-19-000018 0001775196-19-000013 0001104659-19-067470 0001213900-19-023875 0001213900-19-025110 0001687263-19-000002 0001477932-19-004203 0001445866-19-000770 0001104659-19-040957 0001104659-19-040534 0001213900-19-005989 0001062993-19-002322 0001213900-19-009185 0001376474-19-000161 0001477932-19-003604 0001214659-19-004272 0000806171-19-000046 0001615774-19-005436 0001493152-19-004027 0001144204-18-066410 0001736865-18-000011 0001213900-18-015470 0001659173-18-000297 0001615774-18-011965 0001193125-18-282274 0001686327-18-000003 0001645471-18-000001 0001683168-18-002475 0001104659-18-023719 0001644600-18-000004 0001213900-18-007813 0001387131-18-002795 0001144204-18-003839 0001144204-17-049013 0001592766-17-000002	0001592766-17-000001	0001144204-17-017812	0001144204-17-015837	0001644600-16-000204	0001660947-16-000005	0001668918-16-000004	0001647636-16-000012	0001193125-16-465855	0001615774-16-003914 0001682391-17-000001 0001677092-17-000003 0001144204-17-065689 0001654954-17-010336 0001193125-17-316813  0001104659-17-062545 {
+drop if accession=="`k'" & strpos(subtype,"1-A-W")>0
+}
+*check remaining ones not marked by WD but 1-A-W present
+list company fileno accession filingdate subtype finaldc if strpos(subtype,"1-A-W")>0 & dd_w<1
+list company fileno accession filingdate subtype if strpos(subtype,"1-A-W")==0 & finaldc!="WD" & finaldc!="E1-WD" & dd_w==1
+*suppress 1-A-W filings themselves
+drop if strpos(subtype,"1-A-W")>0
+
+///some filers file RW to withdraw
+joinby cik using RWs_incr, unmatched(master)
+tab _m
+*Shiftpixy [cik 1675634, 1-A fileno 024-10557] filed RW to withdraw 8A-12g due to pending 8A-12b post-1-A
+*Greenbelt [cik 1442197, 1-A fileno 024-10450] filed RW to withdraw 1-A and refile a new one under 024-10599
+*PFG Fund III [cik 1594139, 1-A fileno 024-10607] filed RW to withdraw 1-As from 2013
+*Blue Sky Group Holdings [cik 1688647, 1-A fileno 024-10650] filed RW to withdraw S-1 prior to pursuing 1-A
+*Adomani [cik 1563568, 1-A fileno 024-10656] filed RW to withdraw S-1 prior to pursuing 1-A
+*Red Fish Properties [cik 1703429; 1-A fileno 024-10719] filed RW, then 1-A-W to withdraw 1-A filed instead of 1-A/A
+*Stone BancShares -- duplicates already marked WD; the last RW and RW WD in 12/2017  was meant to be CORRESP in ref to request for acceleration
+*ASI Aviation [cik 1669368] -- filed RW to withdraw S-1 prior to filiing 1-A
+*Spotlight [cik 1077319] --  filed RW to withdraw 1-A/A and refile 1-A POS
+*Legion Capital [cik 1661166] -- filed RW to withdraw 1-A under wrong fileno
+*Elio Motors [cik 1531266] -- filed RW to withdrew S-1
+*Signature Devices [cik 1267919] --  filed RW to replace 1-A with 1-A/A incorrectly filed under new fileno
+*Level Brands [cik 1644903] -- withdrew S-3 filed post-1-A
+*Ultimate Holdings Corp [cik 1713757] -- withdrew request for acceleration
+*inCapta -- withdrew a prior Form 10 [cik 1099234]
+*PFG Fund [cik 1594139] -- withdrew a prior form 1-A
+*Victory Marine Holdings [cik 895287] - mistagged 1-A/A in lieu of PQA
+*Gulf Chronic Care [cik 1762400] - withdrew a different duplicate fileno 024-10979
+*Marquie Group [cik 1434601] - RW before
+*Kibush Capital Corp [cik 1614466] - RW before
+*DPW Holdings [cik 896493] - RW before
+*Hylete - 024-10871, 024-10736, 024-10817 - RW related to S-1 filed after 1-A
+*Vivos - 024-11049 RW in ref to prior S-1
+*1847 holdings - 024-11064 RW in ref to prior S-1
+*Real Goods Solar 024-11087 - RW unrelated to 1-A
+*Wizard Entertainment 024-11070 - RW unrelated to 1-A
+*Legion Capital Corp 024-11123 - RW related to duplicate 1-A POS with incorrect file number
+*Yayyo - 024-10654 - RW related to two 1-A POS previously withdrawn
+*Two Hands - 024-10985 - RW unrelated to 1-A
+*Scopus Biopharma- 024-11137, 024-11228 - RW unrelated to 1-A 
+*Greater States Sports Authority - 024-11144 - RW unrelated to 1-A
+*Acacia Diversified Holdings - 024-11146 - RW unrelated to 1-A
+*Hylete - 024-11158 - unrelated to 1-A
+*Legacy Teak 024-11191 - marked as WD
+*Energy & Water Development Corp 024-1168 - unrelated  to 1-A
+*Principal Solar - 024-11253 - unrelated to 1-A
+*Blackout Entertainment Group Inc - 024-11160 - RW unrelated to 1-A
+*Can B Corp - 024-11233 - RW unrelated to 1-A
+foreach x in 11233 11160 11253 11168 11191 11158 11144 11146 11228 11137 10985 10654 11123 11070 11087 11064 11049 10871 10817 10736 10998 11013 10992 10975 10861 10900 10895 10813 10742 10557 10599 10656 10607 10650 10702 10786 10757 10638 10708 10606 10473 10819 {
+replace _m=. if fileno=="024-`x'"
+}
+replace fileno="024-10819" if fileno=="024-10850"
+list cik subtype fileno company qualif finaldc if _m==3 & finaldc!="WD" & finaldc!="E1-WD"
+///STOP -- any left?
+drop _m
+
+sort cik fileno filingdate
+*some may be abandoned but not flagged AB
+ren filingdate datefiled
+gen datefiled_=mdy( real(substr(datefiled,6,2)) , real(substr(datefiled,9,2)) , real(substr(datefiled,1,4)) )
+sort finaldc cik fileno datefiled_
+by finaldc cik fileno: gen last=1 if _n==_N & finaldc==""
+by finaldc cik fileno: gen inactive=1 if _n==_N & finaldc=="" & datefiled_<=$cutoffdate-365
+format datefiled_ %td
+list cik fileno company datefiled_ finaldc if last==1 & datefiled_<$cutoffdate-365
+compress
+replace finaldc="AB" if accession=="0001671132-17-000008"
+*DLP Positive Returns 024-10929 https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-015495
+replace finaldc="AB" if fileno=="024-10929"
+*HC Government Realty Trust 024-10563 11/2018 PQA https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-013913
+replace finaldc="AB" if accession=="0001654954-18-012065"
+*Perdin https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-013917
+replace finaldc="AB" if accession=="0001746998-18-000006"
+*Texas Gulf Atlantic https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-012311
+replace finaldc="AB" if accession=="0001749442-18-000003"
+*QuantumRE https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-012215
+replace finaldc="AB" if accession=="0001445866-18-001097"
+*ConnectX https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-012743
+replace finaldc="AB" if accession=="0001754936-18-000002"
+*Heugenis https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-012269
+replace finaldc="AB" if accession=="0001751930-18-000006"
+list cik fileno company datefiled_ finaldc if last==1 & datefiled_<$cutoffdate-270 & datefiled_>=$cutoffdate-365
+*Aviation Mining https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-19-016023
+replace finaldc="AB" if accession=="0001214659-19-001339"
+*MC Endeavors https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-004340
+replace finaldc="AB" if accession=="0001683168-19-002385"
+*Digatrade https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-005476
+replace finaldc="AB" if accession=="0001654954-19-006714" | accession=="0001654954-19-007796" | accession=="0001654954-19-008426" | accession=="0001654954-19-003930"
+*Carolina Complete Health Network https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-001592
+replace finaldc="AB" if accession=="0001213900-19-007421"
+*AppSwarm https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-005326
+replace finaldc="AB" if accessionno=="0001775730-19-000002"
+*Huixinjia https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-004527
+replace finaldc="AB" if accessionn=="0001774589-19-000011"
+*Seattle Emerald Haze https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002317
+replace finaldc="AB" if accessionn=="0001615774-19-003979" | accessionn=="0001615774-19-004261" | accessionn=="0001615774-19-006033"
+*Sin City Bad Babies https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002318
+replace finaldc="AB" if accessionn=="0001615774-19-003876" | accessionn=="0001615774-19-004263" | accessionn=="0001615774-19-006035"
+*Los Angeles Drive https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002315
+replace finaldc="AB" if accessionn=="0001615774-19-003869" | accessionn=="0001615774-19-004270" | accessionn=="0001615774-19-006038"
+*Texas Holy Smokers https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002316
+replace finaldc="AB" if accessionn=="0001615774-19-003872" | accessionn=="0001615774-19-004267"  | accessionn=="0001615774-19-006034" 
+*CRL Team 12 https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002588
+replace finaldc="AB" if accessionn=="0001615774-19-003791" | accessionn=="0001615774-19-004000" | accessionn=="0001615774-19-004266" | accessionn=="0001615774-19-006041" 
+*Philadelphia Powderkegs https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002263
+replace finaldc="AB" if accessionn=="0001615774-19-003726" | accessionn=="0001615774-19-004276"  | accessionn=="0001615774-19-006032" 
+*New England Cape Cods https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002262
+replace finaldc="AB" if accessionn=="0001615774-19-003754"  | accessionn=="0001615774-19-004275" | accessionn=="0001615774-19-006042"
+*Florida Mangos Wild https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002255
+replace finaldc="AB" if accessionn=="0001615774-19-003721"  | accessionn=="0001615774-19-004272"  | accessionn=="0001615774-19-006039"
+*Denver Moguls https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002257
+replace finaldc="AB" if accessionn=="0001615774-19-003723" | accessionn=="0001615774-19-004280"  | accessionn=="0001615774-19-006040"
+*Chicago Hogmollies https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002254
+replace finaldc="AB" if accessionn=="0001615774-19-003669" | accessionn=="0001615774-19-004269" | accessionn=="0001615774-19-006037"
+*Atlanta Hotwings https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002253
+replace finaldc="AB" if accessionn=="0001615774-19-003654" | accessionn=="0001615774-19-004278" | accessionn=="0001615774-19-006037"
+*New York Bodega Cats https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-002251
+replace finaldc="AB" if accessionn=="0001615774-19-003467" | accessionn=="0001615774-19-004260" | accessionn=="0001615774-19-005921"
+*TeleAmerica https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-003400
+replace finaldc="AB" if accessionn=="0001768344-19-000007"
+*Tao Entertainment https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-001243
+replace finaldc="AB" if accessionn=="0001214659-19-000545"
+*LittleFish https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-000315
+replace finaldc="AB" if accessionn=="0001214659-19-002606"
+*Sensortechnics https://www.edgar.sec.gov/AR/DisplayDocument.do?step=results&accessionNumber=0000000000-20-003674
+replace finaldc="AB" if accessionn=="0001477932-19-003818"
+
+replace accessionno=subinstr(accessionno," ","",.)
+gen accession=subinstr(accessionno,"-","",.)
+sort cik fileno filingdate_
+tab subtype
+*for these accession #s, extract XML data
+gen xml=cik+"/"+accession
+*accessionno's are unique, use them in filenames
+tab accession
+*regularly
+*drop if finaldc=="WD" | finaldc=="E1-WD" | finaldc=="AB" | finaldc=="SUSP"
+
+sort cik fileno datefiled_
+
+tab finaldc
+replace finaldc="Abandoned" if finaldc=="AB" | finaldc=="AC"
+replace finaldc="Abandoned/Suspended" if finaldc=="AB-SUSP"
+replace finaldc="Qualified" if finaldc=="E1" | finaldc=="E3" |  finaldc=="E4"
+replace finaldc="Qualified, then withdrawn" if finaldc=="E1-WD"
+replace finaldc="Withdrawn" if finaldc=="WD"
+replace finaldc="Possibly stale" if finaldc=="" & datefiled_<=$cutoffdate-270
+
+///consolidate duplicates that should have been amendments
+gen consolidated=.
+gen fileno2=fileno
+*WebDS *CF reviewer notes 10586 and 10591 appear to be amendments mis-filed as new filings
+replace fileno2="024-10580" if fileno=="024-10586" | fileno=="024-10591"
+*also WebDS, but under another CIK
+replace fileno2="024-10580" if fileno=="024-10573"
+replace cik="1678727" if cik=="1676314"
+*Samba Brazilian - consolidate 024-10645 and 024-10402 (1-A-W intended to withdraw 10402 and 10477, then filed under 10645 and 10402)
+replace fileno2="024-10645" if fileno=="024-10402"
+*Corporate Investments Group - consolidate
+replace fileno2="024-10675" if fileno=="024-10677"
+*Neurmedix - consolidate
+replace fileno2="024-10695" if fileno=="024-10696" | fileno=="024-10697"
+*Astics - consolidate
+replace fileno2="024-10564" if fileno=="024-10569" | fileno=="024-10572"
+*360 Sports - consolidate
+replace fileno2="024-10517" if fileno=="024-10516"
+*Sensory Performance Technology - consolidate
+replace fileno2="024-10600" if fileno=="024-10603" | fileno=="024-10604"
+*Tuscan Garden Fund
+replace fileno2="024-10455" if fileno=="024-10462" | fileno=="024-10466"
+*Entrex Market Index
+replace fileno2="024-10812" if fileno=="024-10824"
+*JRD4256 Enterprises
+replace fileno2="024-10602" if fileno=="024-10618" | fileno=="024-10543"
+*Tian Tian 
+replace fileno2="024-11009" if fileno=="024-11023" | fileno=="024-11027" | fileno=="024-11030" | fileno=="024-11046"
+*DLP Positive Fixed Returns Fund
+replace fileno2="024-10826" if fileno=="024-10929"
+foreach k in 10826 11009 10580 10645 10675 10695 10564 10517 10600 10602 {
+replace consolidated=1 if fileno2=="024-`k'"
+}
+gen d=1
+egen r=rank(d), by(cik fileno2) unique
+replace r=. if r!=1 | finaldc=="Withdrawn" | finaldc=="Abandoned"
+egen ct=count(r), by(cik)
+*Groundfloor started new fileno's
+list company cik fileno datefiled_ finaldc if r==1 & ct>1
+
+list company cik fileno accession datefiled_ if finaldc=="Possibly stale"
+
+
+  drop ct r d
+*iConsumer - 3rd offering is a rescisson offer
+*VirTra “We decided to register our company with the SEC and list on Nasdaq Capital Market before concluding our Regulation A+ Offering and therefore did not raise any funds during the offering,” Mr. Ferris added. “By filing our periodic results with the SEC, we will improve transparency for our shareholders, and this represents another important consideration for the investors we hope to attract.”
+foreach x in 0001493152-18-002472 0001493152-17-015000 0001493152-17-011736 0001493152-17-010403 {
+replace finaldc="E1-WD" if accessionno=="`x'"
+}
+*uplistings - partial list
+gen uplist=.
+foreach k in "soliton" "medalist diversified reit" "xspand" "chicken soup" "ipic" "fat brands" "level brands" "arcimoto" "shiftpixy" "longfin" "myomo" "adomani" {
+replace uplist=1 if strpos(lower(company),"`k'")>0
+}
+tab company if uplist==1
+save list_filings, replace
+
+use list_filings, clear
+count
+format %td filingd
+tab filingd
+destring cik, force replace
+joinby cik accessionno using f:\reg_a\archive\_reg_a_combined_20200630, unmatched(master)
+tab _m
+*drop WebDebt ones withdrawn or classified as abandoned since last report
+list fileno if _m==1
+drop if _m==1
+drop _m
+save list_filings_xml, replace
+
+use list_filings_xml, clear
+tostring cik, force replace
+*merge back previously checked 
+joinby cik fileno accessionno using $prior\OFFERAMTS_checked, unmatched(master)
+tab _m
+foreach x in issueraggregate securityholderagg totalaggregate securitiesoffered pricepersec {
+destring `x', force replace
+}
+gen totaloffering=issueraggregate+securityholderagg 
+save list_filings_, replace
+
+use list_filings_, clear
+tab finaldc
+drop if finaldc=="Withdrawn" | finaldc=="E1-WD" | finaldc=="Qualified, then withdrawn"
+keep company cik fileno accessionno totaloffering totaloffering_checked
+ren totaloffering totaloffering_xml
+gen accession2=subinstr(accessionno,"-","",.)
+gen index_url="https://www.sec.gov/Archives/edgar/data/"+cik+"/"+accession2+"/"+accessionno+"-index.htm" 
+drop accession2
+export excel using OFFERAMTS_tocheck.xlsx, firstrow(var) replace
+*post-processing
+*check fundrise amounts: take amounts raised to date + new amount on PQA = new amount sought (they report on a rolling basis)
+
+import excel using OFFERAMTS_checked.xlsx, clear firstrow
+keep cik accessionno fileno totaloffering_checked
+save OFFERAMTS_checked, replace
+
+use list_filings_, clear
+drop if finaldc=="Withdrawn" | finaldc=="E1-WD" | finaldc=="Qualified, then withdrawn"
+*AWA Group LP filed 1-A/A in lieu of 1-A POS post-qualif
+replace subtype="1-A POS" if accessionno=="0001213900-16-015287"
+drop _m
+*merge back checked offer amounts
+drop totaloffering_checked
+joinby cik fileno accessionno using OFFERAMTS_checked, unmatched(master)
+count if _m==1
+tab finaldc if _m==1
+///some filers include additional, rather than updated amounts, in POS
+gen flag=""
+replace flag="add offering amounts" if pos==1 & fileno=="024-10496" | pos==1 & fileno=="024-10753" | pos==1 & fileno=="024-10671" | pos==1 & fileno=="024-10507"  
+replace flag="update financials" if pos==1 & fileno=="024-10363" | pos==1 & fileno=="024-10394" | pos==1 & fileno=="024-10327"
+foreach k in "0001712534-18-000005" "0001683168-18-002381" "0001477932-18-003573" "0001213900-18-011527" "0001477932-18-003573" "0001213900-18-008945" "0001213900-18-009878" "0001213900-18-009946" "0001213900-18-012215" "0001213900-18-012531" "0001144204-18-045747" "0001144204-18-049660" "0001486452-18-000006" "0001193125-18-217650" "0001652577-18-000006" "0001652577-18-000005" "0001654954-18-010627" "0001493152-18-010534" "0001144204-18-047564" "0001213900-18-008863" "0001213900-18-011797" "0001213900-18-012262" "0001264931-18-000039" "0001640334-18-000834" "0001213900-18-006287" "0001213900-18-005245" "0001688804-18-000012" "0001688804-18-000009" "0001477932-18-003041" "0001477932-18-002549" "0001161697-18-000236" "0001652577-18-000002" "0001646269-18-000012" "0001477932-18-002597" "0001477932-18-002741" "0001553350-18-000610" "0001615774-18-002530" "0001214659-18-004477" "0001214659-18-004351" "0001214659-18-004201" "0001214659-18-003830" "0001445866-18-000631" "0001213900-18-008187" "0001213900-18-007713" "0001213900-18-007523" "0001213900-18-004983" "0001144204-18-022443" "0001144204-18-017744" "0001144204-18-018271" "0001688804-18-000004" "0001486452-18-000001" "0001193125-18-087667" "0001264931-18-000007" "0001264931-18-000014" "0001104659-18-009383" "0001104659-18-008137" "0001615774-18-002139" "0001214659-18-002200" "0001065949-18-000045" "0001161697-18-000153" "0001549212-18-000005" "0001144204-18-016256" "0001493152-18-002472" "0001658959-18-000003" "0001658959-18-000005" "0001658959-18-000007" "0001658959-18-000004" "0001477932-18-000441" "0001477932-18-000818"  "0001477932-18-001008" "0001477932-18-001088" "0001193125-18-080991" "0001213900-18-000963" "0001493152-18-002155" "0001493152-18-003914" "0001144204-18-014696" "0001686327-18-000002" "0001686327-18-000001" "0001144204-18-010669" "0001144204-18-000317" "0001144204-18-000367" "0001437749-18-000769" "0001437749-18-002246" "0001213900-18-001197" "0001213900-18-002290" "0001213900-18-003035" "0001213900-18-000895" "0001144204-17-060236" "0001144204-17-060243" "0001144204-17-060249" "0001493152-17-014896" "0001689536-17-000008" "0001640334-17-002541" "0001688804-17-000027" "0001688804-17-000026" "0001193125-17-310091" "0001193125-17-320687" "0001104659-17-060430" "0001654954-17-010145" "0001387131-17-005612" "0001699683-17-000034" "0001699683-17-000037" "0001493152-17-011750" "0001144204-17-054022" "0001144204-17-060630" "0001144204-17-060545" "0001681287-17-000015" "0001686327-17-000004" "0001640170-17-000006" "0001579586-17-000005"  "0001144204-17-052554" "0001144204-17-056332" "0001144204-17-064404" "0001144204-17-054591" "0001144204-17-063013" "0001144204-17-065568" "0001579586-17-000002" "0001579586-17-000006" "0001579586-17-000004" "0001640170-17-000002" "0001640170-17-000005" "0001671132-17-000008" "0001144204-17-048616" "0001677159-17-000008"  "0001213900-17-009373" "0001477932-17-004814" "0001477932-17-004814" "0001144204-17-047922" "0001144204-17-048525" "0001144204-17-050600" "0001144204-17-050618" "0001144204-17-050610" "0001699683-17-000023" "0001699683-17-000027" "0001699683-17-000033" "0001699683-17-000028" "0001579586-16-000024" "0001587999-16-000017" "0001640170-16-000010" "0001579586-16-000025" "0001640170-16-000013" "0001579586-17-000001" "0001579586-16-000021" "0001640170-16-000007" "0001640170-16-000008" "0001579586-16-000026" "0001640170-16-000014" "0001640170-17-000001" "0001144204-17-015675" "0001144204-17-022150" "0001144204-17-028126" "0001144204-17-029818"  "0001658959-16-000010" "0001658959-16-000017" "0001658959-16-000018" "0001658959-17-000001" "0001144204-17-034652" "0001144204-17-028349" "0001144204-17-031655" "0001213900-17-002883" "0001213900-17-004572" "0001477932-15-007483" "0001477932-15-007705" "0001477932-16-008275" "0001477932-17-002747" "0001673239-17-000002" "0001673239-17-000003" "0001673239-17-000004" "0001493152-16-010164" "0001493152-17-005551" "0001493152-17-007278" "0001477932-17-000476" "0001477932-17-001502" "0001477932-17-002404" "0001477932-17-002702" "0001213900-17-002859" "0001213900-17-006275" "0001193125-17-204138" "0001644600-16-000144" "0001644600-16-000151" "0001644600-16-000157" "0001644600-16-000161" "0001644600-16-000163" "0001671132-17-000001" "0001104659-16-159384" "0001104659-16-163451" "0001104659-17-001142" "0001104659-17-014992" "0001144204-17-017771" "0001144204-17-026756" "0001657737-16-000008" "0001657737-16-000009" "0001657737-16-000010" "0001657737-16-000012"  "0001144204-17-017529" "0001144204-17-032393" "0001144204-17-033032" "0001144204-17-005981" "0001144204-17-008096" "0001144204-17-032024" "0001675426-16-000017" "0001213900-17-000574" "0001651699-17-000005" "0001654954-17-000348" "0001654954-17-000515" "0001652577-16-000033" "0001652577-17-000002" "0001144204-17-040579" "0001144204-17-044842" "0001699683-17-000013 0001699683-17-000014" "0001699683-17-000016" "0001387131-17-004229" "0001687263-17-000008" "0001213900-17-009263" "0001213900-17-008134" "0001144204-17-041252" "0001144204-17-037373" "0001144204-17-037071" "0001144204-17-038986" "0001671132-17-000006" "0001144204-17-042187" "0001144204-17-045742" "0001677159-17-000007" "0001681287-17-000013" "0001699683-17-000013" "0001699683-17-000014" "0001688804-17-000020" {
+replace flag="update offering terms" if accessionno=="`k'"
+}
+*fixed on back-end in OFFERAMTS_checked
+*Fundrise offerings (10492, 10504, 10566, 10567, 10568, 10690, 10691, 10727, 10843, 10844)
+*Rise Corp 10659
+*RSE collection 10717
+*cottonwood II 10615
+*mogul II 10713
+*dakota 10688
+*myracehorse 10896
+*otis gallery 10951
+*RSE archive 11057
+tab fileno if strpos(lower(company),"raceho")>0 & pos==1
+tab fileno if strpos(lower(company),"otis")>0 & pos==1
+tab fileno if strpos(lower(company),"fundrise")>0 & pos==1
+tab fileno if strpos(lower(company),"rise corp")>0 & pos==1
+tab fileno if strpos(lower(company),"rse")>0 & pos==1
+tab fileno if strpos(lower(company),"cottonwood")>0 & pos==1
+tab fileno if strpos(lower(company),"mogul")>0 & pos==1
+tab fileno if strpos(lower(company),"dakota")>0 & pos==1
+tab fileno if strpos(lower(company),"otis")>0 & pos==1
+*Groundfloor 024-10758 - does not add LRO amounts on PQAs (equity offer)
+foreach k in 10492 10504 10566 10567 10568 10690 10691 10727 10843 10844 10926 10297 10969 10970 11140 10717 10896 11057 10659 10615 10713 10688 10758 10615 10730 10927 {
+replace flag="update offering terms" if fileno=="024-`k'"
+}
+*
+foreach k in 10457 10458 10553 10565 10730 10767 10811 10734 10898 10839 10766 10563 10832 10922 10822 10799 10620 10638 10951 10983 {
+replace flag="update offering terms" if fileno=="024-`k'"
+}
+list company fileno totaloffering_checked accessionno if flag=="" & pos==1
+tab company fileno if flag=="add offering amounts" & pos==1
+
+*Golden Developing Solutions - two fileno's used erroneously, as noted in 1-A-W
+replace fileno2="024-10832" if fileno2=="024-10922"
+
+*Legion Capital https://www.nasdaq.com/article/private-equity-firm-legion-capital-withdraws-6-million-reg-a-ipo-cm1057448
+replace finaldc="Qualified, then withdrawn" if fileno=="024-10638"
+drop if finaldc=="Qualified, then withdrawn"
+
+///Groundfloor Finance Inc. fileno 024-10496 (LROs); 024-10753 (LROs)
+///Groundfloor Real Estate 1 			 fileno 024-10671 
+///Fig Publishing 						 fileno 024-10507
+///fundrise -- fixed in OFFERAMTS_checked
+
+///for them, for PQAs, cumulate the amounts sought, identifying unique PQAs
+gen fileno_quasi=fileno
+*replace totaloffering_ as of latest POS by sum of prior total offering amounts by issuer and securityholders, as of that date, ex. duplicate POS amendments
+*include the final pre-qualification amendment in Groundfloor's fileno 024-10496 ["0001144204-15-069912"]
+*plus accessions of unique POS amendments listed above 
+destring totaloffering_checked, force replace
+///jan 2020 revisions
+*replace totaloffering=totaloffering_checked if totaloffering_checked<.
+drop _m
+joinby accession using f:\reg_a\20191231\tttttt, unmatched(master)
+tab _m
+drop _m
+///Groundfloor
+drop if totaloffering_checked==.
+format %td filingdate
+list cik fileno fileno_quasi accessionno filingdate totaloffering if pos==1 & fileno=="024-10496"
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001144204-16-074611"
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001144204-16-074611"
+replace fileno_quasi=fileno+"pos02" if accessionno=="0001144204-16-076029"
+replace fileno_quasi=fileno+"pos03" if accessionno=="0001144204-16-077761"
+replace fileno_quasi=fileno+"pos0407" if accessionno=="0001144204-16-079225"
+replace fileno_quasi=fileno+"pos05" if accessionno=="0001144204-16-079846"
+replace fileno_quasi=fileno+"pos06" if accessionno=="0001144204-16-081250"
+replace fileno_quasi=fileno+"pos0407" if accessionno=="0001144204-16-083190"
+replace fileno_quasi=fileno+"pos08" if accessionno=="0001144204-16-083364"
+replace fileno_quasi=fileno+"pos09" if accessionno=="0001144204-16-085027"
+replace fileno_quasi=fileno+"pos1011" if accessionno=="0001144204-16-087625"
+replace fileno_quasi=fileno+"pos1011" if accessionno=="0001144204-16-088744"
+replace fileno_quasi=fileno+"pos12" if accessionno=="0001144204-16-089204"
+replace fileno_quasi=fileno+"pos13" if accessionno=="0001144204-16-091524"
+replace fileno_quasi=fileno+"pos14" if accessionno=="0001144204-16-092960"
+replace fileno_quasi=fileno+"pos13" if accessionno=="0001144204-16-093298"
+replace fileno_quasi=fileno+"pos15" if accessionno=="0001144204-16-094123"
+replace fileno_quasi=fileno+"pos16" if accessionno=="0001144204-16-095250"
+replace fileno_quasi=fileno+"pos17" if accessionno=="0001144204-16-097089"
+replace fileno_quasi=fileno+"pos18" if accessionno=="0001144204-16-099642"
+replace fileno_quasi=fileno+"pos19" if accessionno=="0001144204-16-101756"
+replace fileno_quasi=fileno+"pos20" if accessionno=="0001144204-16-105113"
+replace fileno_quasi=fileno+"pos21" if accessionno=="0001144204-16-106739"
+replace fileno_quasi=fileno+"pos22" if accessionno=="0001144204-16-108084"
+replace fileno_quasi=fileno+"pos23" if accessionno=="0001144204-16-108689"
+replace fileno_quasi=fileno+"pos22" if accessionno=="0001144204-16-109064"
+replace fileno_quasi=fileno+"pos24" if accessionno=="0001144204-16-109189" 
+replace fileno_quasi=fileno+"pos25" if accessionno=="0001144204-16-110565" 
+replace fileno_quasi=fileno+"pos25" if accessionno=="0001144204-16-111624"
+replace fileno_quasi=fileno+"pos26" if accessionno=="0001144204-16-111941"
+replace fileno_quasi=fileno+"pos26" if accessionno=="0001144204-16-113146"
+replace fileno_quasi=fileno+"pos27" if accessionno=="0001144204-16-114202"
+replace fileno_quasi=fileno+"pos28" if accessionno=="0001144204-16-116832"
+replace fileno_quasi=fileno+"pos29" if accessionno=="0001144204-16-120426"
+replace fileno_quasi=fileno+"pos30" if accessionno=="0001144204-16-121631"
+replace fileno_quasi=fileno+"pos31" if accessionno=="0001144204-16-123503"
+replace fileno_quasi=fileno+"pos32" if accessionno=="0001144204-16-123541"
+replace fileno_quasi=fileno+"pos33" if accessionno=="0001144204-16-125700"
+replace fileno_quasi=fileno+"pos31" if accessionno=="0001144204-16-126083"
+replace fileno_quasi=fileno+"pos34" if accessionno=="0001144204-16-127547"
+replace fileno_quasi=fileno+"pos33" if accessionno=="0001144204-16-128152"
+replace fileno_quasi=fileno+"pos35" if accessionno=="0001144204-16-128583"
+replace fileno_quasi=fileno+"pos36" if accessionno=="0001144204-16-133218"
+replace fileno_quasi=fileno+"pos36" if accessionno=="0001144204-16-136479"
+replace fileno_quasi=fileno+"pos36" if accessionno=="0001144204-16-136762"
+replace fileno_quasi=fileno+"pos37" if accessionno=="0001144204-16-137846"
+replace fileno_quasi=fileno+"pos38" if accessionno=="0001144204-16-139684"
+replace fileno_quasi=fileno+"pos39" if accessionno=="0001144204-17-002036"
+replace fileno_quasi=fileno+"pos40" if accessionno=="0001144204-17-005330"
+replace fileno_quasi=fileno+"pos41" if accessionno=="0001144204-17-010084"
+replace fileno_quasi=fileno+"pos42" if accessionno=="0001144204-17-014960"
+replace fileno_quasi=fileno+"pos43" if accessionno=="0001144204-17-016251"
+replace fileno_quasi=fileno+"pos4445" if accessionno=="0001144204-17-017330"
+replace fileno_quasi=fileno+"pos4445" if accessionno=="0001144204-17-019401"
+replace fileno_quasi=fileno+"pos4445" if accessionno=="0001144204-17-020580"
+replace fileno_quasi=fileno+"pos4445" if accessionno=="0001144204-17-020936"
+replace fileno_quasi=fileno+"pos4445" if accessionno=="0001144204-17-021616"
+replace fileno_quasi=fileno+"pos46" if accessionno=="0001144204-17-023446"
+replace fileno_quasi=fileno+"pos47" if accessionno=="0001144204-17-036274"
+replace fileno_quasi=fileno+"pos48" if accessionno=="0001144204-17-037636"
+replace fileno_quasi=fileno+"pos49" if accessionno=="0001144204-17-042603"
+replace fileno_quasi=fileno+"pos50" if accessionno=="0001144204-17-046780"
+replace fileno_quasi=fileno+"pos51" if accessionno=="0001144204-17-049787"
+replace fileno_quasi=fileno+"pos52" if accessionno=="0001144204-17-050596"
+replace fileno_quasi=fileno+"pos53" if accessionno=="0001144204-17-052044"
+replace fileno_quasi=fileno+"pos54" if accessionno=="0001144204-17-052996"
+replace fileno_quasi=fileno+"pos55" if accessionno=="0001144204-17-053556"
+replace fileno_quasi=fileno+"pos54" if accessionno=="0001144204-17-056033"
+replace fileno_quasi=fileno+"pos56" if accessionno=="0001144204-17-056788"
+replace fileno_quasi=fileno+"pos57" if accessionno=="0001144204-17-061104"
+list cik fileno fileno_quasi accessionno filingdate totaloffering subtype if fileno=="024-10496"
+*closed
+
+format %td filingdate
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001144204-18-002617"
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001144204-18-003566"
+replace fileno_quasi=fileno+"pos02" if accessionno=="0001144204-18-005580"
+replace fileno_quasi=fileno+"pos03" if accessionno=="0001144204-18-010683"
+replace fileno_quasi=fileno+"pos03" if accessionno=="0001144204-18-012342"
+replace fileno_quasi=fileno+"pos04" if accessionno=="0001144204-18-014276"
+replace fileno_quasi=fileno+"pos05" if accessionno=="0001144204-18-016051"
+replace fileno_quasi=fileno+"pos06" if accessionno=="0001144204-18-016451"
+replace fileno_quasi=fileno+"pos06" if accessionno=="0001144204-18-018024"
+replace fileno_quasi=fileno+"pos07" if accessionno=="0001144204-18-019564"
+replace fileno_quasi=fileno+"pos07" if accessionno=="0001144204-18-021019"
+replace fileno_quasi=fileno+"pos08" if accessionno=="0001144204-18-021495"
+replace fileno_quasi=fileno+"pos09" if accessionno=="0001144204-18-024356"
+replace fileno_quasi=fileno+"pos09" if accessionno=="0001144204-18-026182"
+replace fileno_quasi=fileno+"pos10" if accessionno=="0001144204-18-028594"
+replace fileno_quasi=fileno+"pos11" if accessionno=="0001144204-18-030943"
+replace fileno_quasi=fileno+"pos11" if accessionno=="0001144204-18-031563"
+replace fileno_quasi=fileno+"pos12" if accessionno=="0001144204-18-032592"
+replace fileno_quasi=fileno+"pos13" if accessionno=="0001144204-18-032746"
+replace fileno_quasi=fileno+"pos14" if accessionno=="0001144204-18-033640"
+replace fileno_quasi=fileno+"pos15" if accessionno=="0001144204-18-034330"
+replace fileno_quasi=fileno+"pos16" if accessionno=="0001144204-18-035415"
+replace fileno_quasi=fileno+"pos15" if accessionno=="0001144204-18-035686"
+replace fileno_quasi=fileno+"pos14" if accessionno=="0001144204-18-035670"
+replace fileno_quasi=fileno+"pos17" if accessionno=="0001144204-18-036587"
+replace fileno_quasi=fileno+"pos18" if accessionno=="0001144204-18-037572"
+replace fileno_quasi=fileno+"pos1920" if accessionno=="0001144204-18-038669"
+replace fileno_quasi=fileno+"pos1920" if accessionno=="0001144204-18-039192"
+replace fileno_quasi=fileno+"pos21" if accessionno=="0001144204-18-039810"
+replace fileno_quasi=fileno+"pos22" if accessionno=="0001144204-18-042362"
+replace fileno_quasi=fileno+"pos23" if accessionno=="0001144204-18-045412"
+replace fileno_quasi=fileno+"pos24" if accessionno=="0001144204-18-046031"
+replace fileno_quasi=fileno+"pos23" if accessionno=="0001144204-18-047831"
+replace fileno_quasi=fileno+"pos25" if accessionno=="0001144204-18-048713"
+replace fileno_quasi=fileno+"pos26" if accessionno=="0001144204-18-049933"
+replace fileno_quasi=fileno+"pos25" if accessionno=="0001144204-18-050071"
+replace fileno_quasi=fileno+"pos25" if accessionno=="0001144204-18-050445"
+replace fileno_quasi=fileno+"pos27" if accessionno=="0001144204-18-051107"
+replace fileno_quasi=fileno+"pos24" if accessionno=="0001144204-18-051659"
+replace fileno_quasi=fileno+"pos28" if accessionno=="0001144204-18-053370"
+replace fileno_quasi=fileno+"pos29" if accessionno=="0001144204-18-054691"
+replace fileno_quasi=fileno+"pos30" if accessionno=="0001144204-18-055998"
+replace fileno_quasi=fileno+"pos29" if accessionno=="0001144204-18-056705"
+replace fileno_quasi=fileno+"pos30" if accessionno=="0001144204-18-056733"
+replace fileno_quasi=fileno+"pos31" if accessionno=="0001144204-18-058911"
+replace fileno_quasi=fileno+"pos32" if accessionno=="0001144204-18-061407"
+replace fileno_quasi=fileno+"pos33" if accessionno=="0001144204-18-061412"
+replace fileno_quasi=fileno+"pos34" if accessionno=="0001144204-18-064599"
+replace fileno_quasi=fileno+"pos35" if accessionno=="0001144204-18-064611"
+replace fileno_quasi=fileno+"pos36" if accessionno=="0001144204-18-066150"
+replace fileno_quasi=fileno+"pos37" if accessionno=="0001144204-19-003833"
+replace fileno_quasi=fileno+"pos38" if accessionno=="0001144204-19-006971"
+replace fileno_quasi=fileno+"pos39" if accessionno=="0001144204-19-010228"
+replace fileno_quasi=fileno+"pos40" if accessionno=="0001144204-19-010145"
+replace fileno_quasi=fileno+"pos40" if accessionno=="0001144204-19-012639"
+replace fileno_quasi=fileno+"pos41" if accessionno=="0001144204-19-014672"
+replace fileno_quasi=fileno+"pos4243" if accessionno=="0001144204-19-016178"
+replace fileno_quasi=fileno+"pos4343" if accessionno=="0001144204-19-016865"
+replace fileno_quasi=fileno+"pos44" if accessionno=="0001144204-19-018173"
+replace fileno_quasi=fileno+"pos4243" if accessionno=="0001144204-19-019471"
+replace fileno_quasi=fileno+"pos4243" if accessionno=="0001144204-19-019470"
+replace fileno_quasi=fileno+"pos4243" if accessionno=="0001144204-19-019961"
+replace fileno_quasi=fileno+"pos44" if accessionno=="0001144204-19-020690"
+replace fileno_quasi=fileno+"pos45" if accessionno=="0001144204-19-022185"
+replace fileno_quasi=fileno+"pos46" if accessionno=="0001144204-19-023727"
+replace fileno_quasi=fileno+"pos47" if accessionno=="0001144204-19-024416"
+replace fileno_quasi=fileno+"pos48" if accessionno=="0001144204-19-027172"
+replace fileno_quasi=fileno+"pos49" if accessionno=="0001144204-19-029570"
+replace fileno_quasi=fileno+"pos50" if accessionno=="0001144204-19-031395"
+replace fileno_quasi=fileno+"pos51" if accessionno=="0001144204-19-032963"
+replace fileno_quasi=fileno+"pos52" if accessionno=="0001144204-19-034629"
+replace fileno_quasi=fileno+"pos53" if accessionno=="0001144204-19-035491"
+replace fileno_quasi=fileno+"pos54" if accessionno=="0001144204-19-036804"
+replace fileno_quasi=fileno+"pos55" if accessionno=="0001144204-19-038846"
+replace fileno_quasi=fileno+"pos56" if accessionno=="0001144204-19-040323"
+replace fileno_quasi=fileno+"pos57" if accessionno=="0001144204-19-040903"
+replace fileno_quasi=fileno+"pos58" if accessionno=="0001144204-19-043144"
+replace fileno_quasi=fileno+"pos59" if accessionno=="0001144204-19-043855"
+replace fileno_quasi=fileno+"pos60" if accessionno=="0001144204-19-045241"
+replace fileno_quasi=fileno+"pos61" if accessionno=="0001144204-19-045346"
+replace fileno_quasi=fileno+"pos62" if accessionno=="0001144204-19-047619"
+replace fileno_quasi=fileno+"pos63" if accessionno=="0001104659-19-054148"
+replace fileno_quasi=fileno+"pos62" if accessionno=="0001104659-19-056575"
+replace fileno_quasi=fileno+"pos63" if accessionno=="0001104659-19-056638"
+replace fileno_quasi=fileno+"pos64" if accessionno=="0001104659-19-057586"
+replace fileno_quasi=fileno+"pos65" if accessionno=="0001104659-19-061980"
+replace fileno_quasi=fileno+"pos66" if accessionno=="0001104659-19-063037"
+replace fileno_quasi=fileno+"pos67" if accessionno=="0001104659-19-065742"
+replace fileno_quasi=fileno+"pos68" if accessionno=="0001104659-19-069308"
+replace fileno_quasi=fileno+"pos69" if accessionno=="0001104659-19-072727"
+replace fileno_quasi=fileno+"pos70" if accessionno=="0001104659-20-001850" 
+replace fileno_quasi=fileno+"pos71" if accessionno=="0001104659-20-004750" 
+replace fileno_quasi=fileno+"pos72" if accessionno=="0001104659-20-007010"
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if pos==1 & fileno=="024-10753"
+*update of offering terms
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if pos==1 & fileno=="024-10758"
+
+///Groundfloor Real Estate 1
+format filingdate_ %td
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001144204-17-027414"
+replace fileno_quasi=fileno+"pos02" if accessionno=="0001144204-17-030042"
+replace fileno_quasi=fileno+"pos03" if accessionno=="0001144204-17-034252"
+list cik fileno fileno_quasi accessionno filingdate totaloffering subtype if fileno=="024-10671"
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001104659-20-010479"
+replace fileno_quasi=fileno+"pos01" if accessionno=="0001104659-20-019188"
+replace fileno_quasi=fileno+"pos02" if accessionno=="0001104659-20-021419"
+replace fileno_quasi=fileno+"pos03" if accessionno=="0001104659-20-024604"
+replace fileno_quasi=fileno+"pos04" if accessionno=="0001104659-20-027677"
+replace fileno_quasi=fileno+"pos05" if accessionno=="0001104659-20-032385"
+replace fileno_quasi=fileno+"pos06" if accessionno=="0001104659-20-066189"
+replace fileno_quasi=fileno+"pos06" if accessionno=="0001104659-20-070867"
+replace fileno_quasi=fileno+"pos06" if accessionno=="0001104659-20-075417"
+replace fileno_quasi=fileno+"pos07" if accessionno=="0001104659-20-077307"
+list cik fileno fileno_quasi accessionno filingdate totaloffering subtype if fileno=="024-11094"
+
+///Fig Publishing fileno 024-10507
+*PSY2
+replace totaloffering=6000*500 if accessionno=="0001213900-15-009585" | accessionno=="0001213900-16-011475" | accessionno=="0001213900-16-014626" | accessionno=="0001213900-16-015713" | accessionno=="0001213900-16-016750" | accessionno=="0001213900-16-017011"
+replace fileno_quasi=fileno+"Wasteland3" if accessionno=="0001213900-16-019487"
+replace fileno_quasi=fileno+"Wasteland3" if accessionno=="0001213900-17-000921"
+replace fileno_quasi=fileno+"Wasteland3" if accessionno=="0001213900-17-001990"
+replace fileno_quasi=fileno+"Wasteland3" if accessionno=="0001213900-17-002356"
+replace fileno_quasi=fileno+"PillarsofEternityII" if accessionno=="0001213900-17-002557"
+replace fileno_quasi=fileno+"PillarsofEternityII" if accessionno=="0001213900-17-004224"
+replace fileno_quasi=fileno+"PhoenixPoint" if accessionno=="0001213900-17-004971"
+replace fileno_quasi=fileno+"PhoenixPoint" if accessionno=="0001213900-17-006110"
+replace fileno_quasi=fileno+"CTT" if accessionno=="0001213900-17-006388"
+replace fileno_quasi=fileno+"CTT" if accessionno=="0001213900-17-007445"
+list cik fileno fileno_quasi accessionno filingdate totaloffering subtype if fileno=="024-10507"
+
+///dismiss amounts checked for identified incremental PQAs
+///jan 2020
+replace totaloffering_checked=. if fileno!=fileno_quasi & totaloffering_checked_==.
+replace totaloffering_checked=totaloffering_checked_ if totaloffering_checked_!=.
+drop totaloffering_checked_
+///jan 2020
+///for the first PQA, set totaloffering_checked to cumulate
+sort cik fileno fileno_quasi filingdate_
+by cik fileno: replace totaloffering_checked=totaloffering_checked[_n-1]+totaloffering if totaloffering_checked==. & fileno_quasi[_n-1]==fileno[_n-1] & fileno!=fileno_quasi
+
+///repeat
+program PQAs
+///cumulate across unique PQAs
+by cik fileno: replace totaloffering_checked=totaloffering_checked[_n-1]+totaloffering if totaloffering_checked==. & fileno_quasi[_n-1]!=fileno_quasi & fileno!=fileno_quasi
+///cumulate against net changes across non-unique PQAs
+by cik fileno: replace totaloffering_checked=totaloffering_checked[_n-1]+(totaloffering-totaloffering[_n-1]) if totaloffering_checked==. & fileno_quasi[_n-1]==fileno_quasi & fileno!=fileno_quasi
+end
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+PQAs
+
+count if totaloffering_checked==.
+
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if fileno=="024-10496"
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if fileno=="024-10671"
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if fileno=="024-10504"
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if fileno=="024-10507"
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if fileno=="024-10492"
+list cik fileno fileno_quasi accessionno filingdate totaloffering totaloffering_checked if fileno=="024-10753"
+
+save interim, replace
+
+use interim, clear
+///drop withdrawn/abandoned
+drop if finaldc=="Abandoned/Suspended" | finaldc=="Qualified, then withdrawn" | finaldc=="Withdrawn" | finaldc=="Abandoned" | finaldc=="E1-WD"
+count
+tab finaldc
+
+*DLP Positive Fixed Returns Fund
+replace fileno2="024-10929" if fileno=="024-10826"
+
+///keep in $
+///consistency check - none exceed limit for their tier
+gen max=50000000 if indicatetier=="Tier2"
+replace max=20000000 if indicatetier=="Tier1"
+*Groundfloor cumulative filed >$50mln, but it has been >12 months.
+list company cik fileno_ indicate accessionno totaloffering* filingdate_  if totaloffering_ >max & totaloffering_ <. & strpos(lower(company),"groundfloor")>0
+*Fundrise cumulative filed >$50mln, but it has been >12 months.
+format filingdate_ %tdMonth_dd,_CCYY
+list company cik fileno_ indicate accessionno totaloffering* filingdate_  if totaloffering_ >max & totaloffering_ <. & strpos(lower(company),"groundfloor")==0
+*Tahawi - 0001686327-18-000002, Tier1, askin 50mln??; comment letter says "tier 2"
+replace indicatetier="Tier2" if accessionno=="0001686327-18-000002" 
+*assign latest amendment flag [current as of the period end date]
+sort cik fileno filingdate_
+*filings, based on latest pre-/post-qualif amendment
+by cik fileno: gen latest=1 if _n==_N
+tab latest
+drop latest
+*likely duplicates submitted under new fileno's
+sort cik fileno2 filingdate_
+*filings, based on latest pre-/post-qualif amendment 
+by cik fileno2: gen latest=1 if _n==_N
+tab latest
+egen ct=count(latest), by(cik)
+tab ct
+list company cik fileno fileno2 filingdate accession finaldc ct if ct>1 & latest==1
+*Groundfloor; Doyen Elements fka Advantameds; SW Innovative; StepOne Personal; Broadcast 3DTV; Legion Capital Corp
+drop ct
+*filings, excluding post-qualif amendments [EnviroServe; Steuben Trust; Sonasoft]
+sort cik fileno2 pos filingdate_
+by cik fileno2 pos: gen latest_expos=1 if _n==_N & pos==.
+tab latest_expos
+tab company if latest_expos==1
+egen ctt=count(latest_expos), by(cik)
+tab comp if ctt==0
+drop ct ctt
+
+*assign latest QUALIFIED amendment flag [current as of the period end date]
+sort qualif cik fileno2 filingdate
+*filings, based on latest pre-/post-qualif amendment [not dropping post-qualif. withdrawals]
+by qualif cik fileno2: gen latest_q=1 if qualif==1 & _n==_N
+tab latest_q
+*filings, excluding post-qualif amendments
+sort qualif cik fileno2 pos filingdate 
+by qualif cik fileno2 pos: gen latest_q_expos=1 if qualif==1 & _n==_N & pos==.
+tab latest_q_expos
+
+///spot check "secondary" labeling
+list cik fileno company securityholderagg if latest==1 & securityholderagg>0 & securityholderagg<.
+*0001079974-16-001550
+replace securityholderagg=320000 if fileno=="024-10575"
+*0001079974-17-000081
+replace securityholderagg=562500 if fileno=="024-10619"
+
+list company fileno if totaloffering_checked==0 & latest==1
+
+**unregistered offerings
+gen unreg=1 if ifunreg=="false" | unregissued==1
+replace unreg=0 if ifunreg=="true" & | unregissued==.
+ren *excem* exem
+replace exem="" if unreg==0 | exem=="N/A" | exem=="0"
+gen exem_4a2=.
+gen exem_regS=.
+gen exem_rule701=.
+gen exem_regA=.
+gen exem_regCF=1 if strpos(exem,"Crowdfunding")>0 | strpos(exem,"Regulation CF")>0 
+gen exem_for=1 if strpos(exem,"Canadian law")>0 | strpos(exem,"Israeli law")>0
+foreach k in "504" "(4)(a)(2)" "4 2" "reg d" "SECTION 4(A)(2)" "RULE 506" "section 4 (2)" "Section 4(a)2" "4(2)" "(4(a)(2)" "4(a)(2)" "private offering" "private placement" "Non-public offering" "Section 4(a)(2)" "Section 4(2)" "Section 4 (2)" "Section 4 (a)(2)" "Sec. 4(a)(2)" "SECTION 4(a)(2)" "Section 4.2" "Rule 506" "Regulation D" "Reg D" "506(b)" "506(c)" "section 4(a)(2)" "230.504" {
+replace exem_4a2=1 if strpos(exem,"`k'")>0
+}
+foreach k in "Regulation A" "REG A" "Rule 230.251" {
+replace exem_regA=1 if strpos(exem,"`k'")>0
+}
+foreach k in "Regulation S" {
+replace exem_regS=1 if strpos(exem,"`k'")>0
+}
+foreach k in "Rule 701" {
+replace exem_rule701=1 if strpos(exem,"`k'")>0
+}
+list exem if unreg==1 & exem_4a2==. & exem_regA==. & exem_regS==. & exem_rule701==. & exem_regCF==. & exem_for==.
+replace unreg=0 if unreg==. & exem=="" & unregissued==.
+
+save _reg_a_combined, replace
+
+
+***
+use _reg_a_combined, clear
+*keep POS in this one
+tab indicatetier
+gen tier=2 if indicatetier=="Tier2"
+replace tier=1 if indicatetier=="Tier1"
+keep if qualif==1
+*pick latest pre-qualification tier status for each fileno (ignore PQAs for now)
+sort cik fileno filingdate
+by cik fileno: keep if _n==_N
+*check if tier has changed for this issuer
+egen sd=sd(tier), by(cik)
+list cik company fileno filingdate finaldispdate tier if sd>0 & sd<.
+sort cik filingdate
+by cik: keep if _n==_N
+keep cik indicate
+destring cik, force replace
+*! check for issuers that make multiple successful offerings in different tiers, to allocate amounts by tier
+save latest_tier, replace
+
+***generate spreadsheet for Checking_amounts_raised
+*what filers have said under "qualificationOfferingAmount" (amount sold pursuant to a qualified 1-A in the past 12mo)
+*in 1-A/As or 1-A-POS filed >12 months after 6/19/2016
+use _reg_a_combined, clear
+keep if datefiled_>=$startofnew & datefiled_<=$cutoffdate & latest==1
+keep if qualification!=. & qualification!=0
+count
+list cik company qualification accession
+gen proceeds_amount_text="qualificationOfferingAggregate / sold pursuant to a qualified 1-A within 12mo before qualification of this 1-A/ from 1-A amendment"
+ren qualificationoffering amount_raised
+destring amount, force replace
+gen report_date=datefiled_ 
+ren subtype formtype
+gen comment="use latest"
+destring cik, force replace
+gen index_url="https://www.sec.gov/Archives/edgar/data/"+strofreal(cik)+"/"+subinstr(accessionno,"-","",.)+"/"+accessionno+"-index.htm"
+keep company cik formtype accessionno comment amount_raised proceeds_amount_text report_date index_url datefiled_ pos
+order company cik formtype accessionno comment amount_raised proceeds_amount_text report_date index_url datefiled_ pos
+
+joinby cik using latest_tier, unmatched(master)
+tab _m 
+drop _m
+save tmp_POS, replace
+
+//////////////////////
+use list_filings, clear
+keep if finaldc=="Qualified"
+sort cik datefiled_
+by cik: keep if _n==_N
+keep cik
+destring cik, force replace
+save qualifiedciks, replace
+
+///get list of 8-Ks and 10-Ks/10-Qs filed by qualifiedciks (reporting co's)
+use list_filings, clear
+keep if finaldc=="Qualified"
+sort cik finaldispdate_
+by cik: keep if _n==1
+keep cik finaldispdate_
+destring cik, force replace
+save qualifiedciks_, replace
+
+import delimited j:\Oea\ForVlad\masterEDGAR\master2020Q1.idx, delimiter("|") varnames(10) clear
+destring cik, force replace
+joinby cik using qualifiedciks_
+keep if substr(form,1,3)=="8-K" | substr(form,1,3)=="10-K" | substr(form,1,3)=="10-Q"
+save stub1, replace
+import delimited j:\Oea\ForVlad\masterEDGAR\master2020Q2.idx, delimiter("|") varnames(10) clear
+destring cik, force replace
+joinby cik using qualifiedciks_
+keep if substr(form,1,3)=="8-K" | substr(form,1,3)=="10-K" | substr(form,1,3)=="10-Q"
+save stub2, replace
+
+clear
+append using stub1
+append using stub2
+gen datefiled_=mdy(real(substr(datefiled,6,2)), real(substr(datefiled,9,2)), real(substr(datefiled,1,4)) )
+*periodic report filed after first qualification of Reg A offering
+keep if datefiled_>=finaldispdate_ & datefiled_<.
+sort cik
+by cik: keep if _n==1
+keep cik company
+count
+save qualifiedciks_withperiodicreports, replace
+erase stub1.dta
+erase stub2.dta
+list
+
+
+foreach y in 253G 1-K 1-U 1-SA 1-Z POS {
+import excel using "edgarlist_`y'_filed.xls", firstrow clear
+ren _all, lower
+destring cik, force replace
+gen comment=""
+gen amount_raised=.
+gen proceeds_amount_text=""
+gen report_date=.
+gen index_url="https://www.sec.gov/Archives/edgar/data/"+strofreal(cik)+"/"+accession+"/"+accessionno+"-index.htm"
+gen datefiled_=mdy( real(substr(filingdate,6,2)) , real(substr(filingdate,9,2)) , real(substr(filingdate,1,4)) )
+**
+keep if datefiled_>=$startofnew & datefiled_<=$cutoffdate
+**
+*joinby cik using latest_tier, unmatched(master)
+*tab _m 
+*drop _m
+joinby cik using qualifiedciks
+ren subtype formtype
+*order company cik formtype accessionno comment amount_raised proceeds_amount report_date index_url datefiled_ pos tier
+*keep company cik formtype accessionno comment amount_raised proceeds_amount report_date index_url datefiled_ pos tier
+order company cik formtype accessionno comment amount_raised proceeds_amount report_date index_url datefiled_ 
+keep company cik formtype accessionno comment amount_raised proceeds_amount report_date index_url datefiled_ 
+save tmp_`y', replace
+}
+
+use $prior\raised, clear
+foreach y in 253G 1-K 1-U 1-SA 1-Z POS {
+append using tmp_`y'
+erase tmp_`y'.dta
+}
+sort company datefiled_
+export excel using Checking_amounts_raised_tocheck.xls, sheet(tocheck, replace) firstrow(var) 
+
+***amounts REPORTED raised
+import excel using Checking_amounts_raised_tocheck.xls, clear firstrow sheet(checked)
+ren _all, lower
+count
+keep company cik formtype accessionno comment amount_raised proceeds_amount_text report_date index_url datefiled_ tier
+order company cik formtype accessionno comment amount_raised proceeds_amount_text report_date index_url datefiled_ tier
+destring cik, force replace
+drop if strpos(comment,"skip")>0 | strpos(comment,"no proceeds")>0 | strpos(comment,"a different")>0 | strpos(comment,"no info")>0
+drop if amount_raised==.
+replace report_date=datefiled_ if report_date==.
+format datefiled_ %td
+joinby cik using latest_tier, unmatched(master)
+ta _m
+tab indicatetier if tier==.
+replace tier=2 if indicate=="Tier2" & tier==.
+replace tier=1 if indicate=="Tier1" & tier==.
+list if tier==1 & indicate=="Tier2"
+*note Groundfloor Real Estate 1 was Tier 1 and started Tier 2 in 2018, but no recent data on proceeds could be identified
+*note Groundfloor Finance had both a past Tier 1 LRO and a new Tier 2 LRO+equity offering; identified separately in spreadsheet
+sort cik tier report_date datefiled_
+list if datefiled_>$cutoffdate
+drop if datefiled_>$cutoffdate
+drop if report_date>$cutoffdate
+by cik tier: gen latest=1 if _n==_N
+sort cik datefiled
+tab comment formtype
+
+keep if amount<. & amount>0
+///secondary trading initiative for RegA+ RE issuances
+///https://www.crowdfundinsider.com/2020/06/163301-the-future-of-real-estate-investing-nasdaq-and-lex-plan-real-estate-investing-marketplace-with-reg-a-issued-securities/
+sort cik tier report_date datefiled_
+by cik tier: gen chg=amount_raised-amount_raised[_n-1]
+list if chg<0 & datefiled_>$startofnew
+drop chg _m
+save raised, replace
+
+use raised, clear
+sort cik tier report_date datefiled_
+by cik tier: keep if _n==_N
+tab cik
+*only Groundfloor 1588504 appears 2x (tier1 and tier2 offering)
+save tmp, replace
+
+use _reg_a_combined, clear
+destring cik, force replace
+keep if latest_q==1
+sort cik datefiled_
+by cik: keep if _n==_N
+format %td finaldispdate_
+joinby cik using tmp, unmatched(master)
+list company finaldispdate_ if _m==1
+list company finaldispdate_ if _m==1 & year(finaldispdate_)<2019 & indicate =="Tier2"
+list company finaldispdate_ if _m==1 & year(finaldispdate_)<2019 & indicate =="Tier1"
+
+***for Wei
+use _reg_a_combined, clear
+keep if latest_expos==1
+keep company cik accessionno totaloffering_ indicate zipcode stateorc
+export excel using f:\reg_a\forWei\regA_$reportdate, sheet(sought_exPOS, replace) firstrow(var)
+
+use _reg_a_combined, clear
+keep if latest_q_expos==1
+keep company cik accessionno totaloffering_ indicate zipcode stateorc
+export excel using f:\reg_a\forWei\regA_$reportdate, sheet(sought_qualif_exPOS, replace) firstrow(var)
+
+use _reg_a_combined, clear
+keep if latest==1
+keep company cik accessionno totaloffering_ indicate zipcode stateorc
+export excel using f:\reg_a\forWei\regA_$reportdate, sheet(sought_incPOS, replace) firstrow(var)
+
+use _reg_a_combined, clear
+keep if latest_q==1
+keep company cik accessionno totaloffering_ indicate zipcode stateorc
+export excel using f:\reg_a\forWei\regA_$reportdate, sheet(sought_qualif_incPOS, replace) firstrow(var)
+
+use _reg_a_combined, clear
+keep if latest_q==1
+sort cik datefiled_
+by cik: keep if _n==_N
+keep cik zip state
+destring cik, force replace
+save stub, replace
+
+use _reg_a_combined, clear
+keep if latest_q==1
+sort cik datefiled_
+by cik: keep if _n==_N
+keep cik sic
+destring cik, force replace
+save stub2, replace
+
+use raised, replace
+drop if amount_raised==0 | amount_raised==.
+sort cik tier report_date datefiled_
+by cik tier: keep if _n==_N
+count
+joinby cik using stub, unmatched(master)
+tab _m
+keep company cik accessionno formtype amount_raised tier zipcode stateorc
+export excel using f:\reg_a\forWei\regA_$reportdate, sheet(raised, replace) firstrow(var)
+
+*excludes PQAs
+*Number of qualified offerings ex. withdrawals by offering tier
+use _reg_a_combined, clear
+egen NQualifTier=count(latest_q_expos), by(indicatetier)
+collapse(mean) NQualifTier, by(indicatetier)
+sum NQualifTier
+gen p_NQualifTier=NQualifTier/r(sum)
+export excel using f:\reg_a\forWei\RegA_Figures_$reportdate.xlsx, firstrow(var) sheet(NQualifTier, replace)
+graph pie NQualifTier if NQualifTier>0, over(indicatetier) plabel(_all percent, format(%9.0f)) pie(1, color(navy)) pie(2, color(eltblue)) title("Number of qualified offerings by tier (% of total)") legend(symysize(*0.8) size(2))
+graph export f:\reg_a\forWei\RegA_NQualifTier_$reportdate.png, replace
+
+*Number of qualified offerings ex. withdrawals by sector
+use _reg_a_combined, clear
+destring siccode, force replace
+gen siccode2=int(siccode/100)
+gen sector=""	
+replace sector="Agriculture, forestry, fishing" if siccode2<=9 & siccode2>=1	
+replace sector="Mining and construction" if siccode2<=17 & siccode2>=10	
+replace sector="Manufacturing" if siccode2<=39 & siccode2>=20	
+replace sector="Transport, communications, utilities" if siccode2<=49 & siccode2>=40	
+replace sector="Retail and wholesale trade" if siccode2<=59 & siccode2>=50	
+replace sector="Finance, insurance, real estate" if siccode2<=67 & siccode2>=60	
+replace sector="Services" if siccode2<=89 & siccode2>=70	
+replace sector="Public administration and nonclassifiable" if siccode2<=99 & siccode2>=91	
+egen NQualifSector=count(latest_q_expos), by(sector)
+collapse(mean) NQualifSector, by(sector)
+sum NQualifSector
+gen p_NQualifSector=NQualifSector/r(sum)
+export excel using f:\reg_a\forWei\RegA_Figures_$reportdate.xlsx, firstrow(var) sheet(NQualifSector, replace)
+graph pie NQualifSector if NQualifSector>0, over(sector) plabel(_all percent, format(%9.0f)) pie(1, color(sandb)) pie(2, color(eltblue)) pie(3, color(dkgreen)) pie(4, color(teal)) pie(5,color(sienna)) pie(6,color(stone)) pie(7,color(olive)) title("Number of qualified offerings by sector (% of total)") legend(symysize(*0.8) size(2))
+graph export f:\reg_a\forWei\RegA_NQualifSector_$reportdate.png, replace
+
+*Number of qualified offerings ex. withdrawals by issuer state of US50 location (ex. Canada)
+use _reg_a_combined, clear
+gen state=stateorc
+joinby state using f:\shape\tl_2015_us_state\match, unmatched(both)
+tab _m
+drop _m
+gen exclude=1 if id==. | state=="AK" | state=="HI" | state=="VI" | state=="PR" | state=="GU" | state=="MP" | state=="AS"
+egen NQualifLoc=count(latest_q_expos), by(state)
+collapse(mean) NQualifLoc exclude, by(state)
+sum NQualifLoc
+gen p_NQualifLoc=NQualifLoc/r(sum)
+export excel using f:\reg_a\forWei\RegA_Figures_$reportdate.xlsx, firstrow(var) sheet(NQualifLoc, replace)
+joinby state using j:\CFLookback\geo\match2018_, unmatched(both)
+replace NQualifLoc=0 if _m==2
+*drop from the map Canada, AK, HI and US Territories
+drop exclude
+gen exclude=1 if _ID==. | state=="AK" | state=="HI" | state=="VI" | state=="PR" | state=="GU" | state=="MP" | state=="AS"
+*generate %tages
+replace p_NQualifLoc=0 if NQualifLoc==0
+drop _m
+spmap p_NQualifLoc using J:\CFLookback\geo\cb_2018_us_state_500k_coor.dta if exclude!=1, id(_ID) fcolor(Blues) clmethod(custom) clbreaks(0 0.001 10 20 100 500) legenda(on) legend(symy(*2) symx(*2) size(*2) label(2 "0") label(3 "1-10") label(4 "11-20") label(5 "21-100") label(6 ">100")) legorder(lohi)
+graph export f:\reg_a\forWei\RegA_NQualifLoc_$reportdate.png, replace
+
+******TABLE UPDATE CODE FOR THE CF UPDATE
+use _reg_a_combined, clear
+gen label=""
+replace label="All filings - Aggregate amount sought ($ mln)" in 1/1
+replace label="All filings - Number of offerings" in 2/2
+replace label="All filings - Average amount sought ($ mln)" in 3/3
+replace label="Qualified - Aggregate amount sought ($ mln)" in 4/4
+replace label="Qualified - Number of offerings" in 5/5
+replace label="Qualified - Average amount sought ($ mln)" in 6/6
+
+qui sum totaloffering_ if latest_expos==1
+gen tier12=r(sum)/1000000 in 1/1
+replace tier12=r(N) in 2/2
+replace tier12=r(mean)/1000000 in 3/3
+qui sum totaloffering_ if latest_q_expos==1
+replace tier12=r(sum)/1000000 in 4/4
+replace tier12=r(N) in 5/5
+replace tier12=r(mean)/1000000 in 6/6
+
+qui sum totaloffering_ if latest_expos==1 & indicatetier=="Tier1"
+gen tier1=r(sum)/1000000 in 1/1
+replace tier1=r(N) in 2/2
+replace tier1=r(mean)/1000000 in 3/3
+qui sum totaloffering_ if latest_q_expos==1 & indicatetier=="Tier1"
+replace tier1=r(sum)/1000000 in 4/4
+replace tier1=r(N) in 5/5
+replace tier1=r(mean)/1000000 in 6/6
+
+qui sum totaloffering_ if latest_expos==1 & indicatetier=="Tier2"
+gen tier2=r(sum)/1000000 in 1/1
+replace tier2=r(N) in 2/2
+replace tier2=r(mean)/1000000 in 3/3
+qui sum totaloffering_ if latest_q_expos==1 & indicatetier=="Tier2"
+replace tier2=r(sum)/1000000 in 4/4
+replace tier2=r(N) in 5/5
+replace tier2=r(mean)/1000000 in 6/6
+
+label var tier12 "Tiers 1 & 2"
+label var tier1 "Tier 1"
+label var tier2 "Tier 2"
+keep tier* label
+keep in 1/6
+export excel using regA_stats.xlsx, firstrow(varl) sheet(sought, replace)
+
+
+use _reg_a_combined, clear
+gen label=""
+replace label="All filings - Aggregate amount sought ($ mln)" in 1/1
+replace label="All filings - Number of offerings" in 2/2
+replace label="All filings - Average amount sought ($ mln)" in 3/3
+replace label="Qualified - Aggregate amount sought ($ mln)" in 4/4
+replace label="Qualified - Number of offerings" in 5/5
+replace label="Qualified - Average amount sought ($ mln)" in 6/6
+
+qui sum totaloffering_ if latest==1
+gen tier12=r(sum)/1000000 in 1/1
+replace tier12=r(N) in 2/2
+replace tier12=r(mean)/1000000 in 3/3
+qui sum totaloffering_ if latest_q==1
+replace tier12=r(sum)/1000000 in 4/4
+replace tier12=r(N) in 5/5
+replace tier12=r(mean)/1000000 in 6/6
+
+qui sum totaloffering_ if latest==1 & indicatetier=="Tier1"
+gen tier1=r(sum)/1000000 in 1/1
+replace tier1=r(N) in 2/2
+replace tier1=r(mean)/1000000 in 3/3
+qui sum totaloffering_ if latest_q==1 & indicatetier=="Tier1"
+replace tier1=r(sum)/1000000 in 4/4
+replace tier1=r(N) in 5/5
+replace tier1=r(mean)/1000000 in 6/6
+
+qui sum totaloffering_ if latest==1 & indicatetier=="Tier2"
+gen tier2=r(sum)/1000000 in 1/1
+replace tier2=r(N) in 2/2
+replace tier2=r(mean)/1000000 in 3/3
+qui sum totaloffering_ if latest_q==1 & indicatetier=="Tier2"
+replace tier2=r(sum)/1000000 in 4/4
+replace tier2=r(N) in 5/5
+replace tier2=r(mean)/1000000 in 6/6
+
+label var tier12 "Tiers 1 & 2"
+label var tier1 "Tier 1"
+label var tier2 "Tier 2"
+keep tier* label
+keep in 1/6
+export excel using regA_stats.xlsx, firstrow(varl) sheet(sought_inclPOS, replace)
+
+
+use raised, replace
+drop if amount_raised==0 | amount_raised==.
+sort cik tier report_date datefiled_
+by cik tier: keep if _n==_N
+count
+list company cik amount datefiled_ formtype
+save raised_latest, replace
+
+
+use raised_latest, clear
+gen label=""
+replace label="Aggregate amount raised ($ mln)" in 1/1
+replace label="Issuers reporting proceeds" in 2/2
+replace label="Average amount raised ($ mln)" in 3/3
+qui sum amount_raised 
+gen raised_tiers12=r(sum)/1000000 in 1/1
+replace raised_tiers12=r(N) in 2/2
+replace raised_tiers12=r(mean)/1000000 in 3/3
+qui sum amount_raised if tier==1 
+gen raised_tier1=r(sum)/1000000 in 1/1
+replace raised_tier1=r(N) in 2/2
+replace raised_tier1=r(mean)/1000000 in 3/3
+qui sum amount_raised if tier==2 
+gen raised_tier2=r(sum)/1000000 in 1/1
+replace raised_tier2=r(N) in 2/2
+replace raised_tier2=r(mean)/1000000 in 3/3
+
+label var label "June 19, 2015 - XX, 2017"
+label var raised_tiers12 "Tiers 1 & 2"
+label var raised_tier1 "Tier 1"
+label var raised_tier2 "Tier 2"
+
+keep raised_tier* label
+keep in 1/3
+export excel using regA_stats.xlsx, firstrow(varl) sheet(raised, replace)
+
+*excel export of source data
+use raised, replace
+export excel using raised.xlsx, firstrow(var) replace
+
+use _reg_a_combined, clear
+keep qualif finaldc filingdate_ accessionno  fileno cik company cik totaloffering_ indicatetier latest latest_expos latest_q latest_q_expos
+export excel using sought.xlsx, firstrow(var) replace
+
+use f:\reg_a\20190630\_reg_a_combined, clear
+keep accession totaloffering_checked
+ren totaloffering_checked totaloffering_checked_
+save tttttt, replace
+use _reg_a_combined, clear
+joinby accession using tttttt, unmatched(master)
+tab _m
+sum totaloffering_checked totaloffering_checked_ if _m==3
+list company cik fileno accession totaloffering_checked totaloffering_checked_  if totaloffering_checked!=totaloffering_checked_ & _m==3
+
+
+
+
+
+///SCRAP
+use $prior\_reg_a_combined, clear
+sort cik fileno2 datefiled_
+*keep if pos==.
+by cik fileno2: keep if _n==_N
+sum totaloffering_checked if indicatetier=="Tier1"
+dis r(sum)/1000000
+sum totaloffering_checked if indicatetier=="Tier2"
+dis r(sum)/1000000
+replace totaloffering_checked =totaloffering_checked /1000
+keep company cik fileno2 totaloffering_checked indicatetier
+ren * *_prior
+ren cik cik 
+ren fileno fileno2
+save stub_prior_latest, replace
+
+use _reg_a_combined, clear
+replace totaloffering_checked =totaloffering_checked /1000
+sort cik fileno2 datefiled_
+*keep if pos==.
+by cik fileno2: keep if _n==_N
+keep company cik fileno2 totaloffering_checked indicatetier
+sum totaloffering_checked if indicatetier=="Tier1"
+dis r(sum)/1000000
+sum totaloffering_checked if indicatetier=="Tier2"
+dis r(sum)/1000000
+joinby cik fileno2 using stub_prior_latest, unmatched(both)
+tab _m
+
+*PAST: Tier 1: 1,101.5 (145); Tier 2: 10,068.6 (342)
+sum totaloffering_checked_prior if indicatetier1tier2offering_prior=="Tier1"
+dis r(sum)/1000
+sum totaloffering_checked_prior if indicatetier1tier2offering_prior=="Tier2"
+dis r(sum)/1000
+*NOW: Tier 1: 1,195.6 (158); Tier 2: 12,232.4 (403)
+sum totaloffering_checked if indicatetier1tier2offering=="Tier1"
+dis r(sum)/1000
+sum totaloffering_checked if indicatetier1tier2offering=="Tier2"
+dis r(sum)/1000
+
+///withdrawn/abandoned
+list company_prior indicatetier1tier2offering_prior cik if _m==2
+*7 Tier 1 $49.1
+sum totaloffering_checked_prior if _m==2 & indicatetier1tier2offering_prior=="Tier1"
+dis r(sum)/1000
+list cik fileno company_prior indicatetier1tier2offering_prior if _m==2 & indicatetier1tier2offering_prior=="Tier1"
+*24 Tier 2 $520.3
+sum totaloffering_checked_prior if _m==2 & indicatetier1tier2offering_prior=="Tier2"
+dis r(sum)/1000
+list cik fileno company_prior indicatetier1tier2offering_prior if _m==2 & indicatetier1tier2offering_prior=="Tier2"
+///new (19 Tier1 $164.5, 85 Tier2 $2,531.9);
+tab indicatetier1tier2offering if _m==1
+sum totaloffering_checked if _m==1 & indicatetier1tier2offering=="Tier1"
+dis r(sum)/1000
+sum totaloffering_checked if _m==1 & indicatetier1tier2offering=="Tier2"
+dis r(sum)/1000
+///amendments to offering amounts
+///present in both --now Tier1 (138) $1030.0; Tier2 (318) $9700.6
+sum totaloffering_checked if _m==3 & indicatetier1tier2offering=="Tier1" & indicatetier1tier2offering_prior=="Tier1"
+dis r(sum)/1000
+sum totaloffering_checked if _m==3 & indicatetier1tier2offering=="Tier2" & indicatetier1tier2offering_prior=="Tier2"
+dis r(sum)/1000
+///present in both --then Tier1 (138) $1052.4; Tier2 (318) $9548.4
+sum totaloffering_checked_prior if _m==3 & indicatetier1tier2offering=="Tier1" & indicatetier1tier2offering_prior=="Tier1"
+dis r(sum)/1000
+sum totaloffering_checked_prior if _m==3 & indicatetier1tier2offering=="Tier2" & indicatetier1tier2offering_prior=="Tier2"
+dis r(sum)/1000
+list company fileno cik totaloffering_checked_prior totaloffering_checked if _m==3 & indicatetier1tier2offering=="Tier1" & totaloffering_checked_prior!=totaloffering_checked
+list company fileno cik totaloffering_checked_prior totaloffering_checked if _m==3 & indicatetier1tier2offering=="Tier2" & totaloffering_checked_prior!=totaloffering_checked
+///0 change of Tiers from 1 to 2 
+list fileno totaloffering_checked_prior totaloffering_checked cik company indicatetier1tier2offering indicatetier1tier2offering_prior if indicatetier1tier2offering!=indicatetier1tier2offering_prior & indicatetier1tier2offering!="" & indicatetier1tier2offering_prior!=""
+
+///Tier 1 total incl PQAs: -7 abandoned/withd -$49.1mln; 19 new $164.5; 0 changed to Tier 2; 0 changed to Tier 1; amended $-1052.4+1030.0=-$22.4; +$93.1; +12
+///Tier 2 total incl PQAs: -24 abandoned/withd -$520.3mln; 85 new $2,531.9; 0 changed to Tier 2; 0 changed to Tier 1; amended -$9548.4+$9700.6=$152.2; +$2,163.8; +61
+
+
+use $prior\raised_latest, clear
+ren amount_raised amount_raised_prior
+ren company company_prior
+joinby cik tier using raised_latest, unmatched(both)
+tab _m
+drop accessionno  formtype proceeds_amount_text report_date index_url datefiled_ latest
+
+*5 new filings of proceeds Tier 1 -- $26.6 mln
+sum amount_raised if _m==2 & tier==1
+dis r(sum)/1000000
+list if _m==2 & tier==1
+list if _m==1 & tier==1
+*32 new filings of proceeds Tier 2 -- $296.66mln
+sum amount_raised if _m==2 & tier==2
+dis r(sum)/1000000
+list if _m==2 & tier==2
+list if _m==1 & tier==2
+
+*updated filings of proceeds [
+*Tier 1 -- $230.36 --> $230.81
+sum amount_raised_prior if _m==3 & tier==1
+dis r(sum)/1000000
+sum amount_raised if _m==3 & tier==1
+dis r(sum)/1000000
+list company cik amount_raised amount_raised_prior if _m==3 & tier==1 & amount_raised!=amount_raised_prior
+*Tier 2 -- $2,215.6 -->$2,627.4 
+sum amount_raised_prior if _m==3 & tier==2
+dis r(sum)/1000000
+sum amount_raised if _m==3 & tier==2
+dis r(sum)/1000000
+list company cik amount_raised amount_raised_prior if _m==3 & tier==2 & amount_raised>amount_raised_prior
+list company cik amount_raised amount_raised_prior if _m==3 & tier==2 & amount_raised<amount_raised_prior
+
+///Tier1: new $26.6 + updated ($230.81-$230.36) = $27.05 diff
+///Tier2: new $296.66 + updated ($2,627.4-$2,215.6) = $708.46 diff
+///$735.5 total [+37 reporters]
