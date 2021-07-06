@@ -1,0 +1,115 @@
+#!/usr/bin/env python3.3
+# Generic Edgar Scraper
+
+# Assign what filing text you want to search for at bottom.
+# e.g. filing = "10-K" or filing = "10" for Ks and Qs
+# walkEdgar() finds hits from the main indices
+# writeEdgar() downloads the hits to disk
+
+import os
+import urllib           #from urllib.request import urlopen
+import time
+import re
+
+starttime =time.time() #timer start
+
+#Set all the program variables
+edgarUrlBase = 'https://www.sec.gov/Archives/'
+indexUrlDir = 'edgar/full-index/'
+outFileBase = 'J:/oea/GOETZR/ocf/python/2016/QTR4'
+#years =['2002','2003','2004']
+#years =['2005','2006','2007']
+#years =['2008','2009','2010']
+#years =['2011','2012','2013']
+#years =['2014','2015']
+years = ['2016',]
+quarters = ['QTR4',]
+indexname = "master.idx"
+filinglist =['D','D/A']
+if not os.path.isdir(outFileBase):
+       os.makedirs(outFileBase)
+#End set all the program variables
+
+def writeEdgar(path, ind, filing):
+   urlpath = edgarUrlBase + path
+   filename = path.split('/')[-1]                       #exp of filename '0001157523-12-001388.txt'
+   localfilepath = outFileBase + ind + '/' + filing + '/'              #exp of localfilepath r'C:\Users\chiappettit\Documents\EGC Output Data2012/QTR1''
+   # if the file does not already exist, download it
+   if not os.path.isdir(localfilepath):
+      os.makedirs(localfilepath)
+   if not os.path.isfile(localfilepath + filename):
+          try:
+          
+                 #print (localfilepath + filename)
+                 outFile = open(localfilepath + filename, 'wb')
+                 curUrlOpen = urllib.request.urlopen(urlpath)   #fix for python 3.3
+                 outFile.write(curUrlOpen.read())
+                 outFile.close()         
+          
+          except:
+                 #this flag sets the "have not downloaded" state to True the loop will continue until this flag is set to false
+                 flag = True
+                 while flag:
+                    print("retrying!")
+                    try:
+                           #print (localfilepath + filename+ '  Second Attempt')
+                           time.sleep(2)
+                           outFile = open(localfilepath + filename, 'wb')
+                           curUrlOpen = urllib.request.urlopen(urlpath)
+                           outFile.write(curUrlOpen.read())
+                           outFile.close()
+                           flag = False
+                    #start loopback. If the above downloading code is not successfully completed, retry.
+                    except Exception as e:
+                           print(e)
+                           pass
+                        
+
+def walkEdgar(filing):
+   urllib.request.CacheFTPHandler
+   indices = [edgarUrlBase + indexUrlDir + year + '/' + qtr + '/' + indexname
+              for year in years
+              for qtr in quarters] 
+   for index in indices:
+      #this flag sets the "have not downloaded" state to True the loop will continue until this flag is set to false
+      flag = True
+      while flag:
+         try:
+            print(index)
+            curIndexUrl = urllib.request.urlopen(index)      #fix for python 3.3 
+            flag = False
+            for line in curIndexUrl:
+                linestr = str(line, encoding='utf8') #fix for python 3.3
+                if '|' in linestr:
+                    data = linestr.split('|')
+                    formtype = data[2]
+                    path = data[4].strip()
+                    if filing == formtype:        
+                       ind = index.split('/')
+                       ind = "/".join(ind[-3:-1])
+                       yield path, ind
+         
+         #start loopback. If the above downloading code is not successfully completed, retry.
+         except Exception as e:
+             time.sleep(2)
+             pass
+             print("retrying!")
+             print(e)
+
+#Main program loop
+#Whenever walkEdgar() gets a hit, yields a tuple for writeEdgar()
+
+
+for filing in filinglist:
+       print ('Set to search for: ' + str(filing))
+       print ("Years to search for: " + str(years))
+       print ("Quarters to search for: " + str(quarters))
+       for path, index in walkEdgar(filing):
+              
+              writeEdgar(path, index, filing)
+   
+endtime = time.time() #Timer stops
+print('Processing time',endtime - starttime)   
+
+
+                                               
