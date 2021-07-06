@@ -1,0 +1,73 @@
+libname reg "d:/SEC/SB/sasdata/";
+%let path=%str(d:/SEC/SB);
+
+options mprint mlogic symbolgen;
+%macro mk_regd(yrqtr);
+filename dfs "&path./20&yrqtr._d/FORMDSUBMISSION.tsv" encoding='utf8';
+proc import datafile=dfs out=reg.regd_DSUBMISSION_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+filename di "&path./20&yrqtr._d/issuers.tsv" encoding='utf8';
+proc import datafile=di out=reg.regd_issuer_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+filename do "&path./20&yrqtr._d/OFFERING.tsv" encoding='utf8';
+proc import datafile=do out=reg.regd_OFFERING_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+filename dr "&path./20&yrqtr._d/RECIPIENTS.tsv" encoding='utf8';
+proc import datafile=dr out=reg.regd_RECIPIENTS_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+
+/*filter on US firms only*/
+proc sql;
+create table regd_issuer_&yrqtr. as
+select *, put(input(substr(zipcode,1,5),8.),z5.) as zip 
+/*select *, put(zipcode,z5.) as zip */
+from reg.regd_issuer_&yrqtr.
+where ACCESSIONNUMBER in 
+(select distinct ACCESSIONNUMBER from reg.regd_offering_&yrqtr. )
+;
+quit;
+
+/*Data cleaning: change Indefinite amount_sought to amount_raised*/
+proc sql;
+create table regd_offering_&yrqtr. as
+select *
+, case when input(TOTALOFFERINGAMOUNT,12.)< TOTALAMOUNTSOLD then TOTALAMOUNTSOLD
+	else input(TOTALOFFERINGAMOUNT,12.) end as Amount_Sought  
+from reg.regd_offering_&yrqtr. 
+;
+quit;
+
+/*dedup reg D issuer on accession #*/
+proc sort data=regd_issuer_&yrqtr. nodupkeys out=regd_issuer_&yrqtr._nodup dupout=regd_issuer2020_dup; by ACCESSIONNUMBER;run;
+proc sort data=regd_issuer_&yrqtr. out=regd_issuer_&yrqtr._nodup dupout=regd_issuer2020_dup; by ACCESSIONNUMBER;run;
+
+/*parepare all needed fields & flags*/
+proc sql;
+create table reg.regd_data_final_&yrqtr. as
+select a.*, b.zipcode, b.zip, b.cik, b.ENTITYNAME, rururb_ind
+
+/*zip code with rururb index of R & B categorized as Rural*/
+, case when rururb_ind in ("R", "B") then "Rural"
+	when rururb_ind in ("U") then "Urban"
+	else "Missing" end as rural_flag
+
+, case when rururb_ind in ("R", "B", "U") then rururb_ind
+	else "Z" end as rururb
+
+/*amount raised greater than 50% of amount sought flag*/
+, case when (TOTALAMOUNTSOLD*1)/(Amount_Sought*1)>.5 then 1 
+	else 0 end as raised_halfSought_flag 
+from regd_offering_&yrqtr. a
+left join regd_issuer_&yrqtr. b
+	on a.ACCESSIONNUMBER=b.ACCESSIONNUMBER
+left join reg.zip2sub c
+	on b.zip=c.zipcode;
+quit;
+%mend;
+
+%mk_regd(19Q1);
+%mk_regd(19Q2);
+%mk_regd(19Q3);
+%mk_regd(19Q4);
+%mk_regd(20Q1);
+%mk_regd(20Q2);
+%mk_regd(20Q3);
+%mk_regd(20Q4);
+%mk_regd(21Q1);
+%mk_regd(21Q2);
