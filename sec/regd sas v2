@@ -1,0 +1,118 @@
+libname reg "C:\Users\zhenghu\Documents\reg\sasdata";
+
+%let path=%str(C:\Users\zhenghu\Documents\reg\data);
+options mprint mlogic symbolgen;
+%macro mk_regd(yrqtr);
+filename dfs "&path./20&yrqtr._d/FORMDSUBMISSION.tsv" encoding='utf8';
+proc import datafile=dfs out=reg.regd_DSUBMISSION_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+filename di "&path./20&yrqtr._d/issuers.tsv" encoding='utf8';
+proc import datafile=di out=reg.regd_issuer_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+filename do "&path./20&yrqtr._d/OFFERING.tsv" encoding='utf8';
+proc import datafile=do out=reg.regd_OFFERING_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+filename dr "&path./20&yrqtr._d/RECIPIENTS.tsv" encoding='utf8';
+proc import datafile=dr out=reg.regd_RECIPIENTS_&yrqtr. dbms=dlm replace;delimiter='09'x; GETNAMES=YES;guessingrows=5000;run;
+
+data reg.regd_OFFERING_&yrqtr.;
+set reg.regd_OFFERING_&yrqtr.;
+length exempt $4.;
+if index(FEDERALEXEMPTIONS_ITEMS_LIST,"06b")>0 then exempt="506b";
+else if index(FEDERALEXEMPTIONS_ITEMS_LIST,"06c")>0 then exempt="506c";
+else if index(FEDERALEXEMPTIONS_ITEMS_LIST,"04")>0 then exempt="504";
+run;
+
+/*filter on US firms only*/
+proc sql;
+create table regd_issuer_&yrqtr. as
+select *, put(input(substr(zipcode,1,5),8.),z5.) as zip 
+/*select *, put(zipcode,z5.) as zip */
+from reg.regd_issuer_&yrqtr.
+where ACCESSIONNUMBER in 
+(select distinct ACCESSIONNUMBER from reg.regd_offering_&yrqtr. )
+;
+quit;
+
+/*Data cleaning: change Indefinite amount_sought to amount_raised*/
+proc sql;
+create table regd_offering_&yrqtr. as
+select *
+, case when input(TOTALOFFERINGAMOUNT,12.)< TOTALAMOUNTSOLD then TOTALAMOUNTSOLD
+	else input(TOTALOFFERINGAMOUNT,12.) end as Amount_Sought  
+from reg.regd_offering_&yrqtr. 
+;
+quit;
+
+/*dedup reg D issuer on accession #*/
+proc sort data=regd_issuer_&yrqtr. nodupkeys out=regd_issuer_&yrqtr._nodup dupout=regd_issuer2020_dup; by ACCESSIONNUMBER;run;
+proc sort data=regd_issuer_&yrqtr. out=regd_issuer_&yrqtr._nodup dupout=regd_issuer2020_dup; by ACCESSIONNUMBER;run;
+
+/*parepare all needed fields & flags*/
+proc sql;
+create table reg.regd_data_final_&yrqtr. as
+select a.*, b.zipcode, b.zip, b.cik, b.ENTITYNAME, rururb_ind
+
+/*zip code with rururb index of R & B categorized as Rural*/
+, case when rururb_ind in ("R", "B") then "Rural"
+	when rururb_ind in ("U") then "Urban"
+	else "Missing" end as rural_flag
+
+, case when rururb_ind in ("R", "B", "U") then rururb_ind
+	else "Z" end as rururb
+
+/*amount raised greater than 50% of amount sought flag*/
+, case when (TOTALAMOUNTSOLD*1)/(Amount_Sought*1)>.5 then 1 
+	else 0 end as raised_halfSought_flag 
+, datepart(FILING_DATE) format date9. as file_date 
+, SUBMISSIONTYPE as formtype
+from regd_offering_&yrqtr. a
+left join regd_issuer_&yrqtr. b
+	on a.ACCESSIONNUMBER=b.ACCESSIONNUMBER
+left join reg.zip2sub c
+	on b.zip=c.zipcode
+left join reg.regd_DSUBMISSION_&yrqtr. d
+	on a.ACCESSIONNUMBER=d.ACCESSIONNUMBER;
+quit;
+%mend;
+
+%mk_regd(19Q1);
+%mk_regd(19Q2);
+%mk_regd(19Q3);
+%mk_regd(19Q4);
+
+%mk_regd(20Q1);
+%mk_regd(20Q2);
+
+%mk_regd(20Q3);
+%mk_regd(20Q4);
+%mk_regd(21Q1);
+%mk_regd(21Q2);
+
+
+data reg.regd_data_final_fy2020;
+set reg.regd_data_final_19q3 
+reg.regd_data_final_19q4
+reg.regd_data_final_20q1
+reg.regd_data_final_20q2;
+if not missing(INVESTMENTFUNDTYPE) then PooledInvestmentFundFlag=1;
+else PooledInvestmentFundFlag=0;
+if INDUSTRYGROUPTYPE in ("Commercial Banking" "Insurance" "Investing" "Investment Banking" "Other Banking and Financial Services" "REITS and Finance") then Financial=1;
+else Financial=0;
+run;
+
+proc freq data=reg.regd_data_final_fy2020;
+table formtype*exempt/missing list;
+table INDUSTRYGROUPTYPE*PooledInvestmentFundFlag*Financial /missing list;
+run;
+/*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*/
+proc means data=reg.regd_data_final_fy2020 n sum;
+class exempt ;
+var TOTALAMOUNTSOLD;
+format TOTALAMOUNTSOLD dollar16.2;
+where SALE_DATE >='01jul2017'd and not missing(rururb_ind);
+run;
+
+proc means data=reg.regd_data_final_fy2020 n sum;
+class exempt rural_flag;
+var TOTALAMOUNTSOLD;
+format TOTALAMOUNTSOLD dollar16.2;
+where SALE_DATE >='01jul2017'd and not missing(rururb_ind) and rural_flag in ("Rural");
+run;
